@@ -1,24 +1,44 @@
+<div align="center">
+
+<img src="static/logo.png" alt="Intern Agent" width="96" />
+
 # Intern Agent
 
-**Live: [intern-agent-production.up.railway.app](https://intern-agent-production.up.railway.app/)**
+**AI agent that finds internships on hh.kz and prepares your applications for you**
 
-AI agent that helps students land internships. It scans fresh vacancies on **hh.kz** by your search queries, scores each one against your resume and shows only the ones worth applying to. One click on **Apply** — and the AI writes a cover letter and tailors your resume for that exact vacancy.
+[![CI](https://github.com/Dex719/intern-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/intern-agent/actions/workflows/ci.yml)
+![tests](https://img.shields.io/badge/tests-56_passed-2ea44f)
+![python](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 
-- **Vacancy feed** — the agent searches hh.kz, screens every new vacancy against your resume in a single LLM pass and ranks them by score; ignore or apply in one click
-- **Scheduled auto-scan** — background scanning every N hours with Telegram notifications for high-score vacancies
-- **Password login** — single-user auth with PBKDF2 hashing and httpOnly session cookies (set on first launch)
-- **Pluggable LLM providers** — Gemini, OpenAI, Anthropic (Claude), OpenRouter, Groq, DeepSeek or Mistral with your own API key, configurable in the UI
-- **Built-in logs viewer** — recent scan/LLM/auth events right in the UI for quick debugging
-- **hh account linking (OAuth)** — connect your hh.ru/hh.kz account and the agent applies to vacancies for you with a tailored cover letter, automatically on scheduled scans or in one click from the feed
-- **Semi-auto mode** — no hh app? The agent still writes the cover letter for every good match and sends it to Telegram with a vacancy link: copy, paste, done
-- **Match score (0–100)** with an honest verdict — is it worth applying?
-- **Matched vs missing requirements** — what you already cover and what to learn
-- **Actionable recommendations** for this specific vacancy
-- **Resume tailored to the vacancy** — your facts, reordered and rephrased for the role
-- **Cover letters in Russian and English**, ready to send
-- **Application tracker** — every analysis is saved with a status pipeline: analyzed → applied → reply → interview → offer / rejected
+**[🚀 Live demo](https://intern-agent-production.up.railway.app/)**
 
-No invented experience: the agent works strictly with facts from your resume.
+<img src="docs/screenshot-light.png" alt="Vacancy feed" width="800" />
+
+</div>
+
+---
+
+The agent scans fresh vacancies on **hh.kz** by your search queries, scores each one against your resume with an LLM and shows only the ones worth applying to. One click on **Apply** — and the AI writes a cover letter and tailors your resume for that exact vacancy.
+
+> No invented experience: the agent works strictly with facts from your resume.
+
+## Features
+
+| | |
+|---|---|
+| 📡 **Vacancy feed** | searches hh.kz, screens every new vacancy against your resume in a single LLM pass and ranks them by score; ignore or apply in one click |
+| ⏰ **Scheduled auto-scan** | background scanning every N hours + Telegram notifications for high-score vacancies |
+| 🤖 **Telegram bot** | cover letters for good matches land right in your chat — copy and send |
+| 🔗 **hh account linking (OAuth)** | connect your hh.ru/hh.kz account and the agent applies for you with a tailored cover letter |
+| ✍️ **Semi-auto mode** | no hh dev app? The agent still writes a cover letter for every good match and sends it to Telegram with the vacancy link |
+| 🎯 **Match score 0–100** | an honest verdict: is it worth applying, what you already cover and what is missing |
+| 📝 **Resume tailored to the vacancy** | your facts, reordered and rephrased for the role |
+| 💌 **Cover letters** | in Russian and English, ready to send |
+| 📊 **Application tracker** | every analysis is saved with a status pipeline: analyzed → applied → reply → interview → offer / rejected |
+| 🧠 **7 LLM providers** | Gemini, OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral — your own API key, selectable in the UI |
+| 🔐 **Password login** | single-user auth: PBKDF2 hashing + httpOnly session cookies, set on first launch |
+| 🪵 **Built-in logs viewer** | recent scan/LLM/auth events right in the UI |
 
 ## How it works
 
@@ -28,18 +48,18 @@ search queries ──► hh search (api.hh.ru ──► fallback: hh.kz HTML)
 hh.kz link ─────────────┤ details: hh API ──► fallback: JSON-LD from the page
 raw vacancy text ───────┤
                         ▼
-   your resume + vacancies ──► Gemini (structured JSON output)
+   your resume + vacancies ──► LLM (strict JSON response schema)
                         ▼
    feed scores ──► Apply: tailored resume + cover letters ──► SQLite tracker
 ```
 
 - **Vacancy fetching** — official open hh API first; if it's unavailable for the server IP, the agent falls back to parsing schema.org JobPosting JSON-LD straight from the vacancy page.
-- **Analysis** — Google Gemini with a strict JSON response schema (no free-form parsing).
+- **Analysis** — LLM with a strict JSON response schema (no free-form parsing).
 - **Storage** — single SQLite file, no external services.
 
 ## Stack
 
-FastAPI · SQLite · Google Gemini · vanilla JS + Material 3 Expressive UI (light/dark) · pytest + ruff
+`FastAPI` · `SQLite` · `Gemini / OpenAI / Anthropic / …` · `vanilla JS` · `Material 3 Expressive` (light/dark) · `pytest` + `ruff`
 
 ## Run locally
 
@@ -55,6 +75,7 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 1. Create a project from this repo — `railway.json` handles build & start.
 2. Set the `GEMINI_API_KEY` variable.
 3. Add a Volume mounted at `/data` and set `DB_PATH=/data/intern.db` so the tracker survives redeploys.
+4. (Optional) set `TELEGRAM_BOT_TOKEN` + chat id in settings — for notifications and semi-auto mode.
 
 ## API
 
@@ -63,7 +84,7 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 | `GET` | `/api/health` | health check |
 | `GET` / `PUT` | `/api/resume` | get / save resume |
 | `POST` | `/api/analyze` | `{url}` or `{text}` → full analysis, saved to tracker |
-| `GET` / `PUT` | `/api/settings` | search queries for the feed |
+| `GET` / `PUT` | `/api/settings` | search queries & settings |
 | `POST` | `/api/scan` | scan hh by saved queries, score new vacancies into the feed |
 | `GET` / `PATCH` | `/api/feed` | feed items / ignore item |
 | `POST` | `/api/auth/setup` / `login` / `logout` | first-run password setup, sessions |
@@ -83,5 +104,12 @@ PYTHONPATH=src pytest -q   # 56 tests
 ## Roadmap
 
 - [x] Scheduled auto-scan → Telegram notifications
+- [x] Semi-auto mode: cover letters to Telegram without an hh app
 - [ ] Response/conversion analytics in the tracker
 - [ ] PDF export of the tailored resume
+
+<div align="center">
+
+<img src="docs/screenshot-dark.png" alt="Dark theme" width="800" />
+
+</div>
