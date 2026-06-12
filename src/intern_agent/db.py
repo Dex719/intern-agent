@@ -82,6 +82,17 @@ def get_conn(db_path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+# ---------- очистка ----------
+
+
+def wipe_personal_data(conn: sqlite3.Connection) -> None:
+    """Чистый старт: стираем данные предыдущего владельца (резюме, трекер,
+    ленту, логи, настройки с ключами и сессии)."""
+    for table in ("resume", "applications", "feed", "logs", "settings", "sessions"):
+        conn.execute(f"DELETE FROM {table}")  # noqa: S608 — имена таблиц фиксированы
+    conn.commit()
+
+
 # ---------- резюме ----------
 
 

@@ -41,6 +41,19 @@ def test_open_mode_then_setup_locks_api(client):
     assert client.get("/api/health").status_code == 200  # публичный
 
 
+def test_setup_wipes_previous_owner_data(client):
+    # данные, оставшиеся с открытого режима (резюме, настройки с ключами)
+    resume = "Иван Иванов, python-стажёр. Опыт: pet-проекты на FastAPI и SQLite. " * 3
+    assert client.put("/api/resume", json={"content": resume}).status_code == 200
+    client.put("/api/settings", json={"llm_provider": "openai", "llm_api_key": "sk-old-1234"})
+
+    # регистрация нового владельца стирает чужое
+    assert client.post("/api/auth/setup", json={"password": PASSWORD}).status_code == 200
+    assert client.get("/api/resume").json()["has_resume"] is False
+    data = client.get("/api/settings").json()
+    assert data.get("llm_api_key", "") == ""
+
+
 def test_login_logout(client):
     client.post("/api/auth/setup", json={"password": PASSWORD})
     client.cookies.clear()

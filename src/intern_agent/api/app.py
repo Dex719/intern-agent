@@ -83,6 +83,8 @@ def auth_setup(body: PasswordIn, request: Request, response: Response) -> dict:
     try:
         if auth.password_is_set(conn):
             raise HTTPException(403, "Пароль уже установлен")
+        # новый владелец — данные прошлого (резюме, трекер, ключи) не достаются ему
+        db.wipe_personal_data(conn)
         auth.set_password(conn, body.password)
         token = auth.create_session(conn)
         db.add_log(conn, "info", "auth", "пароль установлен")
