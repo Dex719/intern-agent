@@ -452,8 +452,13 @@ dialog.m3-dialog::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: bl
 /* ---------- Тост ---------- */
 .toast {
   position: fixed;
+  inset: auto;
   left: 50%;
   bottom: 26px;
+  margin: 0;
+  border: 0;
+  width: auto;
+  overflow: visible;
   transform: translate(-50%, 80px);
   background: var(--inverse-surface);
   color: var(--inverse-on-surface);

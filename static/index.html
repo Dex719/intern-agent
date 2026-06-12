@@ -299,7 +299,7 @@
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast" popover="manual"></div>
 
   <script>
     /* ---------- тема ---------- */
@@ -337,9 +337,15 @@
     function toast(text) {
       const el = $("toast");
       el.textContent = text;
-      el.classList.add("show");
+      // popover = top layer: тост виден поверх открытых <dialog>
+      try { el.hidePopover(); } catch {}
+      try { el.showPopover(); } catch {}
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("show")));
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
+      toastTimer = setTimeout(() => {
+        el.classList.remove("show");
+        setTimeout(() => { try { el.hidePopover(); } catch {} }, 350);
+      }, 2400);
     }
 
     async function copyText(text) {
