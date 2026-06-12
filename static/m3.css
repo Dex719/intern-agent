@@ -594,6 +594,9 @@ footer.colophon {
   .app-row .app-main { flex-basis: 100%; order: -1; }
 }
 
+.dialog-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.dialog-head .icon-btn { width: 38px; height: 38px; }
+
 /* ---------- Логотип-аватар ---------- */
 .logo-img {
   width: 52px;

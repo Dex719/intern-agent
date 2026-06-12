@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,100..125,300..900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/m3.css" />
-  <link rel="icon" href="/static/favicon.png" />
+  <link rel="icon" href="/static/favicon.png?v=2" />
   <script src="/static/icons.js"></script>
   <script>
     // до отрисовки — чтобы не мигала тема
@@ -26,7 +26,7 @@
   <div class="page">
     <header class="top-bar reveal">
       <a class="brand" id="brand">
-        <img class="logo-img" src="/static/logo.png" alt="" />
+        <img class="logo-img" src="/static/logo.png?v=2" alt="" />
         Intern Agent
       </a>
       <div class="spacer"></div>
@@ -162,7 +162,9 @@
 
   <!-- ===== Диалог: резюме ===== -->
   <dialog id="resume-dialog" class="m3-dialog">
-    <h3 class="headline">Моё резюме</h3>
+    <div class="dialog-head"><h3 class="headline" style="flex:1;margin:0">Моё резюме</h3><button class="icon-btn dialog-x" type="button" data-close-dialog="resume-dialog" aria-label="Закрыть">
+      <span data-icon="x" data-icon-size="20"></span>
+    </button></div>
     <p class="body-lg" style="font-size:.92rem;margin:10px 0 14px">
       Вставь текст резюме один раз — агент будет сравнивать с ним каждую вакансию.
       Хранится только в базе приложения.
@@ -176,7 +178,9 @@
 
   <!-- ===== Диалог: поисковые запросы ===== -->
   <dialog id="queries-dialog" class="m3-dialog">
-    <h3 class="headline">Поисковые запросы</h3>
+    <div class="dialog-head"><h3 class="headline" style="flex:1;margin:0">Поисковые запросы</h3><button class="icon-btn dialog-x" type="button" data-close-dialog="queries-dialog" aria-label="Закрыть">
+      <span data-icon="x" data-icon-size="20"></span>
+    </button></div>
     <p class="body-lg" style="font-size:.92rem;margin:10px 0 14px">
       По каким запросам сканировать hh.kz. Один запрос — одна строка, максимум 5.
     </p>
@@ -199,7 +203,9 @@
 
   <!-- Настройки -->
   <dialog id="settings-dialog" class="m3-dialog" style="width:min(560px,calc(100vw - 36px))">
-    <h2 style="margin:0 0 4px">Настройки</h2>
+    <div class="dialog-head" style="margin-bottom:4px"><h2 style="flex:1;margin:0">Настройки</h2><button class="icon-btn dialog-x" type="button" data-close-dialog="settings-dialog" aria-label="Закрыть">
+      <span data-icon="x" data-icon-size="20"></span>
+    </button></div>
 
     <label class="field-label">ИИ-провайдер</label>
     <div id="provider-grid" class="provider-grid"></div>
@@ -379,6 +385,18 @@
     /* ---------- резюме ---------- */
     let hasResume = false;
     const resumeDialog = $("resume-dialog");
+    // крестики на модалках + закрытие по клику на фон
+    document.querySelectorAll("[data-close-dialog]").forEach((b) =>
+      b.addEventListener("click", () => $(b.dataset.closeDialog).close())
+    );
+    document.querySelectorAll("dialog.m3-dialog").forEach((d) =>
+      d.addEventListener("click", (e) => {
+        if (e.target !== d) return;
+        const r = d.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close();
+      })
+    );
+
     $("resume-btn").addEventListener("click", () => resumeDialog.showModal());
     $("resume-cancel").addEventListener("click", () => resumeDialog.close());
     $("resume-save").addEventListener("click", async () => {
