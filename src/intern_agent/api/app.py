@@ -1,14 +1,15 @@
 """FastAPI: лента вакансий + анализ + трекер откликов + auth + статика."""
 
 import asyncio
+import secrets
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from intern_agent import auth, config, db, hh, llm, services
+from intern_agent import auth, config, db, hh, hh_account, llm, services
 
 
 @asynccontextmanager
@@ -228,9 +229,15 @@ class SettingsIn(BaseModel):
     auto_scan_hours: int | None = Field(default=None, ge=0, le=48)
     tg_bot_token: str | None = None
     tg_chat_id: str | None = None
+    hh_client_id: str | None = None
+    hh_client_secret: str | None = None
+    hh_resume_id: str | None = None
+    hh_resume_title: str | None = None
+    auto_apply_enabled: bool | None = None
+    auto_apply_min_score: int | None = Field(default=None, ge=50, le=95)
 
 
-SECRET_KEYS = {"llm_api_key", "tg_bot_token"}
+SECRET_KEYS = {"llm_api_key", "tg_bot_token", "hh_client_secret"}
 
 
 def _mask(value: str) -> str:
@@ -244,6 +251,10 @@ def _settings_out(conn) -> dict:
     settings["llm_provider"] = settings["llm_provider"] or "gemini"
     settings["llm_default_key"] = bool(config.GEMINI_API_KEY)
     settings["auto_scan_hours"] = services._safe_int(settings["auto_scan_hours"])
+    settings["auto_apply_enabled"] = settings["auto_apply_enabled"] == "1"
+    settings["auto_apply_min_score"] = services._safe_int(settings["auto_apply_min_score"]) or 70
+    settings["hh_linked"] = bool(db.get_setting(conn, "hh_access_token"))
+    settings["hh_account_name"] = db.get_setting(conn, "hh_account_name")
     return settings
 
 
@@ -266,15 +277,22 @@ def write_settings(body: SettingsIn) -> dict:
                 raise HTTPException(400, "Нужен хотя бы один поисковый запрос")
             db.save_search_queries(conn, queries)
         if body.llm_provider is not None:
-            if body.llm_provider not in ("gemini", "openai", "openrouter"):
-                raise HTTPException(400, "Провайдер: gemini, openai или openrouter")
+            if body.llm_provider not in llm.PROVIDERS:
+                raise HTTPException(400, "Неизвестный провайдер: " + body.llm_provider)
             db.set_setting(conn, "llm_provider", body.llm_provider)
-        for key in ("llm_api_key", "llm_model", "tg_bot_token", "tg_chat_id"):
+        for key in (
+            "llm_api_key", "llm_model", "tg_bot_token", "tg_chat_id",
+            "hh_client_id", "hh_client_secret", "hh_resume_id", "hh_resume_title",
+        ):
             value = getattr(body, key)
             if value is not None:
                 db.set_setting(conn, key, value.strip())
         if body.auto_scan_hours is not None:
             db.set_setting(conn, "auto_scan_hours", str(body.auto_scan_hours))
+        if body.auto_apply_enabled is not None:
+            db.set_setting(conn, "auto_apply_enabled", "1" if body.auto_apply_enabled else "")
+        if body.auto_apply_min_score is not None:
+            db.set_setting(conn, "auto_apply_min_score", str(body.auto_apply_min_score))
         return {"ok": True, **_settings_out(conn)}
     finally:
         conn.close()
@@ -355,21 +373,101 @@ async def feed_apply(item_id: int) -> dict:
         except llm.LLMError as exc:
             db.add_log(conn, "error", "apply", str(exc))
             raise HTTPException(502, str(exc)) from exc
-        application = {
-            "source": "feed",
-            "url": item["url"],
-            "company": item["company"] or result.get("company"),
-            "position": item["position"] or result.get("position"),
-            "vacancy_text": item["vacancy_text"],
-            "status": "applied",
-            **{k: result.get(k) for k in (
-                "match_score", "verdict", "matched", "missing", "recommendations",
-                "tailored_resume", "cover_letter_ru", "cover_letter_en",
-            )},
-        }
-        app_id = db.insert_application(conn, application)
+        app_id = db.insert_application(conn, services.build_application(item, result))
         db.set_feed_status(conn, item_id, "applied")
-        return {"id": app_id, **db.get_application(conn, app_id)}
+        hh_applied, hh_error = False, ""
+        if db.get_setting(conn, "hh_access_token") and db.get_setting(conn, "hh_resume_id"):
+            try:
+                await services.send_hh_response(conn, item, result.get("cover_letter_ru") or "")
+                hh_applied = True
+                db.add_log(conn, "info", "hh-apply", f"отклик отправлен: {item['position']}")
+            except hh_account.HHAccountError as exc:
+                hh_error = str(exc)
+                db.add_log(conn, "error", "hh-apply", f"{item['position']}: {exc}")
+        return {
+            "id": app_id,
+            "hh_applied": hh_applied,
+            "hh_error": hh_error,
+            **db.get_application(conn, app_id),
+        }
+    finally:
+        conn.close()
+
+
+# ---------- привязка hh ----------
+
+
+def _hh_redirect_uri(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return f"{proto}://{request.url.netloc}/hh/callback"
+
+
+@app.get("/api/hh/connect")
+def hh_connect(request: Request) -> dict:
+    """Возвращает URL авторизации hh (приложение регистрируется на dev.hh.ru)."""
+    conn = db.get_conn()
+    try:
+        client_id = db.get_setting(conn, "hh_client_id")
+        if not client_id or not db.get_setting(conn, "hh_client_secret"):
+            raise HTTPException(400, "Сначала сохрани Client ID и Client Secret из dev.hh.ru")
+        state = secrets.token_urlsafe(24)
+        db.set_setting(conn, "hh_oauth_state", state)
+        return {"url": hh_account.auth_url(client_id, _hh_redirect_uri(request), state)}
+    finally:
+        conn.close()
+
+
+@app.get("/hh/callback")
+async def hh_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    conn = db.get_conn()
+    try:
+        if error or not code:
+            db.add_log(conn, "error", "hh-oauth", f"hh вернул ошибку: {error or 'нет кода'}")
+            return RedirectResponse("/?hh=error")
+        if not state or state != db.get_setting(conn, "hh_oauth_state"):
+            db.add_log(conn, "error", "hh-oauth", "state не совпал — повтори привязку")
+            return RedirectResponse("/?hh=error")
+        db.set_setting(conn, "hh_oauth_state", "")
+        try:
+            payload = await hh_account.exchange_code(
+                db.get_setting(conn, "hh_client_id"),
+                db.get_setting(conn, "hh_client_secret"),
+                code,
+                _hh_redirect_uri(request),
+            )
+            hh_account.save_tokens(conn, payload)
+            me = await hh_account.get_me(payload["access_token"])
+            db.set_setting(conn, "hh_account_name", me["name"])
+            db.add_log(conn, "info", "hh-oauth", f"аккаунт привязан: {me['name']}")
+        except hh_account.HHAccountError as exc:
+            db.add_log(conn, "error", "hh-oauth", str(exc))
+            return RedirectResponse("/?hh=error")
+        return RedirectResponse("/?hh=ok")
+    finally:
+        conn.close()
+
+
+@app.get("/api/hh/resumes")
+async def hh_resumes() -> dict:
+    conn = db.get_conn()
+    try:
+        try:
+            token = await hh_account.get_valid_token(conn)
+            return {"items": await hh_account.list_resumes(token)}
+        except hh_account.HHAccountError as exc:
+            db.add_log(conn, "error", "hh-oauth", str(exc))
+            raise HTTPException(502, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/hh/disconnect")
+def hh_disconnect() -> dict:
+    conn = db.get_conn()
+    try:
+        hh_account.clear_tokens(conn)
+        db.add_log(conn, "info", "hh-oauth", "аккаунт hh отвязан")
+        return {"ok": True}
     finally:
         conn.close()
 

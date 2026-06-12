@@ -271,6 +271,11 @@ def get_feed_item(conn: sqlite3.Connection, item_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def get_feed_item_by_vacancy(conn: sqlite3.Connection, vacancy_id: str) -> dict | None:
+    row = conn.execute("SELECT * FROM feed WHERE vacancy_id = ?", (vacancy_id,)).fetchone()
+    return dict(row) if row else None
+
+
 def set_feed_status(conn: sqlite3.Connection, item_id: int, status: str) -> bool:
     cur = conn.execute("UPDATE feed SET status = ? WHERE id = ?", (status, item_id))
     conn.commit()

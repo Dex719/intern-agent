@@ -5,7 +5,7 @@ import sqlite3
 
 import httpx
 
-from intern_agent import config, db, hh, llm
+from intern_agent import config, db, hh, hh_account, llm
 
 SETTING_KEYS = (
     "llm_provider",
@@ -14,8 +14,15 @@ SETTING_KEYS = (
     "auto_scan_hours",
     "tg_bot_token",
     "tg_chat_id",
+    "hh_client_id",
+    "hh_client_secret",
+    "hh_resume_id",
+    "hh_resume_title",
+    "auto_apply_enabled",
+    "auto_apply_min_score",
 )
 NOTIFY_MIN_SCORE = 60
+AUTO_APPLY_MAX_PER_RUN = 5
 
 
 def get_all_settings(conn: sqlite3.Connection) -> dict:
@@ -105,6 +112,64 @@ async def run_scan(conn: sqlite3.Connection) -> dict:
     }
 
 
+# ---------- отклик через hh ----------
+
+
+def build_application(item: dict, result: dict) -> dict:
+    """Собирает запись трекера из элемента ленты и результата analyze."""
+    return {
+        "source": "feed",
+        "url": item["url"],
+        "company": item["company"] or result.get("company"),
+        "position": item["position"] or result.get("position"),
+        "vacancy_text": item["vacancy_text"],
+        "status": "applied",
+        **{k: result.get(k) for k in (
+            "match_score", "verdict", "matched", "missing", "recommendations",
+            "tailored_resume", "cover_letter_ru", "cover_letter_en",
+        )},
+    }
+
+
+async def send_hh_response(conn: sqlite3.Connection, item: dict, cover_letter: str) -> None:
+    """Шлёт отклик на hh от имени привязанного аккаунта. Бросает HHAccountError."""
+    resume_id = db.get_setting(conn, "hh_resume_id")
+    if not resume_id:
+        raise hh_account.HHAccountError("Не выбрано резюме hh в настройках")
+    token = await hh_account.get_valid_token(conn)
+    await hh_account.apply_to_vacancy(token, item["vacancy_id"], resume_id, cover_letter)
+
+
+async def auto_apply_new_items(conn: sqlite3.Connection, items: list[dict]) -> list[dict]:
+    """Автоотклик: для вакансий со скором выше порога делает разбор и шлёт отклик на hh."""
+    if db.get_setting(conn, "auto_apply_enabled") != "1":
+        return []
+    if not db.get_setting(conn, "hh_access_token"):
+        return []
+    min_score = _safe_int(db.get_setting(conn, "auto_apply_min_score")) or 70
+    good = [it for it in items if (it.get("score") or 0) >= min_score]
+    good = good[:AUTO_APPLY_MAX_PER_RUN]
+    resume = db.get_resume(conn)
+    applied: list[dict] = []
+    for item in good:
+        title = f"{item.get('position') or 'вакансия'} — {item.get('company') or ''}".strip(" —")
+        try:
+            result = await llm.analyze(
+                resume["content"], item["vacancy_text"], get_all_settings(conn)
+            )
+            await send_hh_response(conn, item, result.get("cover_letter_ru") or "")
+        except (llm.LLMError, hh_account.HHAccountError) as exc:
+            db.add_log(conn, "error", "auto-apply", f"{title}: {exc}")
+            continue
+        db.insert_application(conn, build_application(item, result))
+        feed_row = db.get_feed_item_by_vacancy(conn, item["vacancy_id"])
+        if feed_row:
+            db.set_feed_status(conn, feed_row["id"], "applied")
+        db.add_log(conn, "info", "auto-apply", f"отклик отправлен: {title}")
+        applied.append(item)
+    return applied
+
+
 # ---------- Telegram ----------
 
 
@@ -123,22 +188,26 @@ async def send_telegram(token: str, chat_id: str, text: str) -> None:
         resp.raise_for_status()
 
 
-def format_notification(items: list[dict]) -> str:
+def format_notification(items: list[dict], applied: list[dict] | None = None) -> str:
+    applied_ids = {it.get("vacancy_id") for it in applied or []}
     lines = ["<b>Новые стоящие вакансии</b>"]
     for it in items[:8]:
         title = f"{it.get('position') or 'Вакансия'} — {it.get('company') or ''}".strip(" —")
-        lines.append(f"• <b>{it.get('score')}</b>/100 <a href=\"{it.get('url')}\">{title}</a>")
+        mark = " ✅ отклик отправлен" if it.get("vacancy_id") in applied_ids else ""
+        lines.append(f"• <b>{it.get('score')}</b>/100 <a href=\"{it.get('url')}\">{title}</a>{mark}")
     return "\n".join(lines)
 
 
-async def notify_new_items(conn: sqlite3.Connection, items: list[dict]) -> bool:
+async def notify_new_items(
+    conn: sqlite3.Connection, items: list[dict], applied: list[dict] | None = None
+) -> bool:
     """Шлёт в TG вакансии со скором выше порога, если бот настроен."""
     token = db.get_setting(conn, "tg_bot_token")
     chat_id = db.get_setting(conn, "tg_chat_id")
     good = [it for it in items if (it.get("score") or 0) >= NOTIFY_MIN_SCORE]
     if not (token and chat_id and good):
         return False
-    await send_telegram(token, chat_id, format_notification(good))
+    await send_telegram(token, chat_id, format_notification(good, applied))
     return True
 
 
@@ -172,8 +241,9 @@ async def auto_scan_loop() -> None:
                 ),
             )
             if result["added"]:
+                applied = await auto_apply_new_items(conn, result["new_items"])
                 try:
-                    await notify_new_items(conn, result["new_items"])
+                    await notify_new_items(conn, result["new_items"], applied)
                 except httpx.HTTPError as exc:
                     db.add_log(conn, "error", "telegram", f"не смог отправить: {exc}")
         except Exception as exc:  # noqa: BLE001 — фон не должен падать

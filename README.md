@@ -7,8 +7,9 @@ AI agent that helps students land internships. It scans fresh vacancies on **hh.
 - **Vacancy feed** — the agent searches hh.kz, screens every new vacancy against your resume in a single LLM pass and ranks them by score; ignore or apply in one click
 - **Scheduled auto-scan** — background scanning every N hours with Telegram notifications for high-score vacancies
 - **Password login** — single-user auth with PBKDF2 hashing and httpOnly session cookies (set on first launch)
-- **Pluggable LLM providers** — Gemini, OpenAI or OpenRouter with your own API key, configurable in the UI
+- **Pluggable LLM providers** — Gemini, OpenAI, Anthropic (Claude), OpenRouter, Groq, DeepSeek or Mistral with your own API key, configurable in the UI
 - **Built-in logs viewer** — recent scan/LLM/auth events right in the UI for quick debugging
+- **hh account linking (OAuth)** — connect your hh.ru/hh.kz account and the agent applies to vacancies for you with a tailored cover letter, automatically on scheduled scans or in one click from the feed
 - **Match score (0–100)** with an honest verdict — is it worth applying?
 - **Matched vs missing requirements** — what you already cover and what to learn
 - **Actionable recommendations** for this specific vacancy
@@ -66,6 +67,7 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 | `GET` / `PATCH` | `/api/feed` | feed items / ignore item |
 | `POST` | `/api/auth/setup` / `login` / `logout` | first-run password setup, sessions |
 | `GET` | `/api/logs` | recent app events (scan, LLM, auth) |
+| `GET` / `POST` | `/api/hh/connect` / `resumes` / `disconnect` | hh OAuth linking |
 | `POST` | `/api/feed/{id}/apply` | generate application materials, move to tracker |
 | `GET` | `/api/applications` | tracker list + stats |
 | `GET` / `PATCH` / `DELETE` | `/api/applications/{id}` | detail / update status / remove |
@@ -74,7 +76,7 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 
 ```bash
 ruff check src tests
-PYTHONPATH=src pytest -q   # 45 tests
+PYTHONPATH=src pytest -q   # 54 tests
 ```
 
 ## Roadmap

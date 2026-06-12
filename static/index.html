@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,100..125,300..900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/m3.css" />
-  <link rel="icon" href="/static/avatar.jpg" />
+  <link rel="icon" href="/static/favicon.png" />
   <script src="/static/icons.js"></script>
   <script>
     // до отрисовки — чтобы не мигала тема
@@ -26,7 +26,7 @@
   <div class="page">
     <header class="top-bar reveal">
       <a class="brand" id="brand">
-        <img class="logo-img" src="/static/avatar.jpg" alt="" />
+        <img class="logo-img" src="/static/logo.png" alt="" />
         Intern Agent
       </a>
       <div class="spacer"></div>
@@ -202,12 +202,8 @@
   <dialog id="settings-dialog" class="m3-dialog" style="width:min(560px,calc(100vw - 36px))">
     <h2 style="margin:0 0 4px">Настройки</h2>
 
-    <label class="field-label" for="set-provider">ИИ-провайдер</label>
-    <select id="set-provider" class="select-input">
-      <option value="gemini">Gemini (Google AI Studio)</option>
-      <option value="openai">OpenAI</option>
-      <option value="openrouter">OpenRouter</option>
-    </select>
+    <label class="field-label">ИИ-провайдер</label>
+    <div id="provider-grid" class="provider-grid"></div>
 
     <label class="field-label" for="set-key">API-ключ</label>
     <input id="set-key" class="text-input" type="password" autocomplete="off" />
@@ -230,6 +226,39 @@
     <input id="set-tg-token" class="text-input" type="password" autocomplete="off" />
     <label class="field-label" for="set-tg-chat">Telegram: chat id</label>
     <input id="set-tg-chat" class="text-input" type="text" autocomplete="off" placeholder="узнай свой id у @userinfobot" />
+
+    <label class="field-label">Аккаунт hh — автоотклик</label>
+    <div id="hh-status" class="hh-status">
+      <span data-icon="link" data-icon-size="16"></span>
+      <span id="hh-status-text">не привязан</span>
+      <span style="flex:1"></span>
+      <button id="hh-connect-btn" class="btn btn-tonal btn-sm" type="button">Привязать hh</button>
+      <button id="hh-disconnect-btn" class="btn btn-text btn-sm" type="button" style="display:none">Отвязать</button>
+    </div>
+    <p class="field-hint">Зарегистрируй приложение на dev.hh.ru (redirect: <code id="hh-redirect-hint"></code>), вставь Client ID и Secret, нажми «Привязать».</p>
+    <div id="hh-creds">
+      <label class="field-label" for="set-hh-id">hh Client ID</label>
+      <input id="set-hh-id" class="text-input" type="text" autocomplete="off" />
+      <label class="field-label" for="set-hh-secret">hh Client Secret</label>
+      <input id="set-hh-secret" class="text-input" type="password" autocomplete="off" />
+    </div>
+    <div id="hh-resume-wrap" style="display:none">
+      <label class="field-label" for="set-hh-resume">Резюме на hh для откликов</label>
+      <select id="set-hh-resume" class="select-input"></select>
+    </div>
+    <label class="switch-row" for="set-auto-apply">
+      <input id="set-auto-apply" type="checkbox" />
+      Автоотклик при авто-скане
+    </label>
+    <div id="auto-apply-score-wrap" style="margin-top:8px">
+      <label class="field-label" for="set-apply-score" style="margin-top:0">Откликаться при скоре от</label>
+      <select id="set-apply-score" class="select-input">
+        <option value="60">60+</option>
+        <option value="70">70+ (рекомендую)</option>
+        <option value="80">80+</option>
+        <option value="90">90+</option>
+      </select>
+    </div>
 
     <div class="dialog-actions" style="display:flex;gap:8px;align-items:center;margin-top:22px;flex-wrap:wrap">
       <button id="logs-btn" class="btn btn-text btn-sm" type="button">
@@ -464,6 +493,8 @@
           btn.innerHTML = `<span class="spinner" style="width:16px;height:16px"></span> Готовлю отклик…`;
           try {
             const item = await api(`/api/feed/${id}/apply`, { method: "POST" });
+            if (item.hh_applied) toast("Отклик отправлен на hh ✅");
+            else if (item.hh_error) toast("hh: " + item.hh_error);
             renderAnalysis(item, $("detail-body"), false, true);
             $("detail-dialog").showModal();
             card.classList.add("leaving");
@@ -774,45 +805,125 @@
     /* ---------- настройки ---------- */
     const settingsDialog = $("settings-dialog");
     let settingsCache = {};
+    const PROVIDERS = [
+      { id: "gemini", name: "Gemini", sub: "Google", hint: "Бесплатный ключ: aistudio.google.com → Get API key", model: "gemini-2.5-flash" },
+      { id: "openai", name: "OpenAI", sub: "GPT", hint: "platform.openai.com → API keys", model: "gpt-4o-mini" },
+      { id: "anthropic", name: "Claude", sub: "Anthropic", hint: "console.anthropic.com → API keys", model: "claude-sonnet-4-5" },
+      { id: "openrouter", name: "OpenRouter", sub: "любые модели", hint: "openrouter.ai → Keys; модель в формате vendor/model", model: "google/gemini-2.0-flash-001" },
+      { id: "groq", name: "Groq", sub: "Llama, быстрый", hint: "Бесплатный ключ: console.groq.com → API keys", model: "llama-3.3-70b-versatile" },
+      { id: "deepseek", name: "DeepSeek", sub: "дёшево", hint: "platform.deepseek.com → API keys", model: "deepseek-chat" },
+      { id: "mistral", name: "Mistral", sub: "EU", hint: "console.mistral.ai → API keys", model: "mistral-small-latest" },
+    ];
+    let selectedProvider = "gemini";
+    function renderProviderGrid() {
+      $("provider-grid").innerHTML = PROVIDERS.map((p) => `
+        <button type="button" class="provider-chip ${p.id === selectedProvider ? "selected" : ""}" data-provider="${p.id}">
+          <span class="chip-check">${iaIcon("check", 12)}</span>
+          ${p.name}<small>${p.sub}</small>
+        </button>`).join("");
+      $("provider-grid").querySelectorAll(".provider-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          selectedProvider = chip.dataset.provider;
+          renderProviderGrid();
+          syncSettingsHints();
+        });
+      });
+    }
     async function openSettings() {
       try { settingsCache = await api("/api/settings"); } catch (e) { toast(e.message); return; }
-      $("set-provider").value = settingsCache.llm_provider || "gemini";
+      selectedProvider = settingsCache.llm_provider || "gemini";
+      renderProviderGrid();
       $("set-key").value = "";
       $("set-model").value = settingsCache.llm_model || "";
       $("set-autoscan").value = String(settingsCache.auto_scan_hours || 0);
       $("set-tg-token").value = "";
       $("set-tg-chat").value = settingsCache.tg_chat_id || "";
+      $("set-hh-id").value = settingsCache.hh_client_id || "";
+      $("set-hh-secret").value = "";
+      $("set-auto-apply").checked = !!settingsCache.auto_apply_enabled;
+      $("set-apply-score").value = String(settingsCache.auto_apply_min_score || 70);
+      $("hh-redirect-hint").textContent = location.origin + "/hh/callback";
       syncSettingsHints();
+      syncHHView();
       settingsDialog.showModal();
     }
     function syncSettingsHints() {
+      const p = PROVIDERS.find((x) => x.id === selectedProvider) || PROVIDERS[0];
       const masked = settingsCache.llm_api_key;
-      const usingDefault = $("set-provider").value === "gemini" && !masked && settingsCache.llm_default_key;
+      const usingDefault = selectedProvider === "gemini" && !masked && settingsCache.llm_default_key;
       $("set-key").placeholder = masked ? `сохранён (${masked}) — введи новый, чтобы заменить`
         : usingDefault ? "используется ключ сервера — можно свой"
         : "вставь API-ключ провайдера";
-      $("set-key-hint").textContent = {
-        gemini: "Бесплатный ключ: aistudio.google.com → Get API key",
-        openai: "platform.openai.com → API keys",
-        openrouter: "openrouter.ai → Keys; модель в формате vendor/model",
-      }[$("set-provider").value];
-      $("set-model").placeholder = { gemini: "gemini-2.5-flash", openai: "gpt-4o-mini",
-        openrouter: "google/gemini-2.0-flash-001" }[$("set-provider").value];
+      $("set-key-hint").textContent = p.hint;
+      $("set-model").placeholder = p.model;
       $("set-tg-token").placeholder = settingsCache.tg_bot_token
         ? `сохранён (${settingsCache.tg_bot_token})` : "токен из @BotFather (опционально)";
     }
-    $("set-provider").addEventListener("change", syncSettingsHints);
+    function syncHHView() {
+      const linked = !!settingsCache.hh_linked;
+      $("hh-status").classList.toggle("linked", linked);
+      $("hh-status-text").textContent = linked
+        ? `привязан: ${settingsCache.hh_account_name || "аккаунт hh"}` : "не привязан";
+      $("hh-connect-btn").style.display = linked ? "none" : "";
+      $("hh-disconnect-btn").style.display = linked ? "" : "none";
+      $("hh-creds").style.display = linked ? "none" : "";
+      $("hh-resume-wrap").style.display = linked ? "" : "none";
+      if (linked) loadHHResumes();
+    }
+    async function loadHHResumes() {
+      const sel = $("set-hh-resume");
+      sel.innerHTML = `<option value="">загружаю…</option>`;
+      try {
+        const items = (await api("/api/hh/resumes")).items;
+        sel.innerHTML = items.length
+          ? items.map((r) => `<option value="${esc(r.id)}">${esc(r.title)}</option>`).join("")
+          : `<option value="">на hh нет резюме — создай на hh.kz</option>`;
+        if (settingsCache.hh_resume_id) sel.value = settingsCache.hh_resume_id;
+        else if (items.length) sel.value = items[0].id;
+      } catch (e) {
+        sel.innerHTML = `<option value="">ошибка: ${esc(e.message)}</option>`;
+      }
+    }
+    $("hh-connect-btn").addEventListener("click", async () => {
+      const payload = {};
+      if ($("set-hh-id").value.trim()) payload.hh_client_id = $("set-hh-id").value.trim();
+      if ($("set-hh-secret").value.trim()) payload.hh_client_secret = $("set-hh-secret").value.trim();
+      try {
+        if (Object.keys(payload).length)
+          await api("/api/settings", { method: "PUT", body: JSON.stringify(payload) });
+        const { url } = await api("/api/hh/connect");
+        location.href = url;
+      } catch (e) { toast(e.message); }
+    });
+    $("hh-disconnect-btn").addEventListener("click", async () => {
+      if (!confirm("Отвязать аккаунт hh? Автоотклик перестанет работать.")) return;
+      try {
+        await api("/api/hh/disconnect", { method: "POST" });
+        settingsCache = await api("/api/settings");
+        syncHHView();
+        toast("Аккаунт hh отвязан");
+      } catch (e) { toast(e.message); }
+    });
     $("settings-btn").addEventListener("click", openSettings);
     $("settings-cancel").addEventListener("click", () => settingsDialog.close());
     $("settings-save").addEventListener("click", async () => {
       const payload = {
-        llm_provider: $("set-provider").value,
+        llm_provider: selectedProvider,
         llm_model: $("set-model").value.trim(),
         auto_scan_hours: Number($("set-autoscan").value),
         tg_chat_id: $("set-tg-chat").value.trim(),
+        hh_client_id: $("set-hh-id").value.trim(),
+        auto_apply_enabled: $("set-auto-apply").checked,
+        auto_apply_min_score: Number($("set-apply-score").value),
       };
       if ($("set-key").value.trim()) payload.llm_api_key = $("set-key").value.trim();
       if ($("set-tg-token").value.trim()) payload.tg_bot_token = $("set-tg-token").value.trim();
+      if ($("set-hh-secret").value.trim()) payload.hh_client_secret = $("set-hh-secret").value.trim();
+      const resumeSel = $("set-hh-resume");
+      if (resumeSel.value) {
+        payload.hh_resume_id = resumeSel.value;
+        payload.hh_resume_title = resumeSel.selectedOptions[0]?.textContent || "";
+      }
       try {
         await api("/api/settings", { method: "PUT", body: JSON.stringify(payload) });
         settingsDialog.close();
@@ -847,7 +958,11 @@
       loadFeed();
       refreshCount();
     }
+    const hhParam = new URLSearchParams(location.search).get("hh");
+    if (hhParam) history.replaceState(null, "", "/");
     (async () => {
+      if (hhParam === "ok") setTimeout(() => { toast("Аккаунт hh привязан ✅"); openSettings(); }, 600);
+      if (hhParam === "error") setTimeout(() => { toast("Не удалось привязать hh — смотри логи"); openLogs(); }, 600);
       try {
         const state = await api("/api/auth/state");
         if (!state.password_set) { showAuth("setup"); return; }

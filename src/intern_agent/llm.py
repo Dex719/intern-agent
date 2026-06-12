@@ -1,4 +1,4 @@
-"""LLM-провайдеры (Gemini / OpenAI / OpenRouter): анализ вакансий и скрининг ленты."""
+"""LLM-провайдеры (Gemini, OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral)."""
 
 import asyncio
 import json
@@ -9,16 +9,28 @@ from intern_agent import config
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+
+# OpenAI-совместимые провайдеры: один и тот же chat/completions формат.
 OPENAI_BASES = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+    "mistral": "https://api.mistral.ai/v1",
 }
 
 DEFAULT_MODELS = {
     "gemini": "gemini-2.5-flash",
     "openai": "gpt-4o-mini",
+    "anthropic": "claude-sonnet-4-5",
     "openrouter": "google/gemini-2.0-flash-001",
+    "groq": "llama-3.3-70b-versatile",
+    "deepseek": "deepseek-chat",
+    "mistral": "mistral-small-latest",
 }
+
+PROVIDERS = tuple(DEFAULT_MODELS)
 
 RETRY_STATUSES = {429, 500, 502, 503}
 MAX_ATTEMPTS = 3
@@ -94,7 +106,7 @@ def resolve_config(settings: dict | None = None) -> dict:
     """Собирает конфиг провайдера: настройки из БД поверх переменных окружения."""
     settings = settings or {}
     provider = (settings.get("llm_provider") or "gemini").strip().lower()
-    if provider not in ("gemini", "openai", "openrouter"):
+    if provider not in PROVIDERS:
         provider = "gemini"
     api_key = (settings.get("llm_api_key") or "").strip()
     if not api_key and provider == "gemini":
@@ -128,6 +140,13 @@ def _extract_text_gemini(payload: dict) -> str:
         if block:
             raise LLMError(f"Gemini отклонил запрос: {block}") from exc
         raise LLMError("Пустой ответ от Gemini") from exc
+
+
+def _extract_text_anthropic(payload: dict) -> str:
+    try:
+        return payload["content"][0]["text"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LLMError("Пустой ответ от Anthropic") from exc
 
 
 def _extract_text_openai(payload: dict) -> str:
@@ -177,6 +196,20 @@ async def _call_json(prompt: str, cfg: dict, *, schema: dict | None, temperature
             GEMINI_URL.format(model=model), headers={}, params={"key": api_key}, body=body
         )
         return _json_from_text(_extract_text_gemini(payload))
+    if provider == "anthropic":
+        body = {
+            "model": model,
+            "max_tokens": 8192,
+            "temperature": temperature,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        payload = await _post_with_retry(
+            ANTHROPIC_URL,
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+            params={},
+            body=body,
+        )
+        return _json_from_text(_extract_text_anthropic(payload))
     body = {
         "model": model,
         "temperature": temperature,

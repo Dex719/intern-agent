@@ -639,3 +639,60 @@ footer.colophon {
   color: var(--on-surface-variant);
 }
 .log-line-error { color: var(--error, #b3261e); }
+
+
+/* ---------- селектор провайдеров ---------- */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 8px;
+}
+.provider-chip {
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--outline-variant);
+  border-radius: 14px;
+  background: var(--surface-container-low, var(--surface));
+  color: var(--on-surface);
+  font: inherit; font-size: .85rem; font-weight: 600;
+  cursor: pointer;
+  transition: border-color .2s, background .25s, transform .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.provider-chip small {
+  font-size: .68rem; font-weight: 500; color: var(--outline);
+  letter-spacing: .02em;
+}
+.provider-chip:hover { border-color: var(--primary); transform: translateY(-1px); }
+.provider-chip.selected {
+  border-color: var(--primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.provider-chip.selected small { color: var(--on-primary-container); opacity: .75; }
+.provider-chip .chip-check {
+  position: absolute; top: 8px; right: 8px;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: none; align-items: center; justify-content: center;
+  background: var(--primary); color: var(--on-primary);
+}
+.provider-chip.selected .chip-check { display: flex; }
+
+/* ---------- hh-секция ---------- */
+.hh-status {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--outline-variant);
+  font-size: .85rem;
+  color: var(--on-surface-variant);
+}
+.hh-status.linked { border-color: var(--primary); color: var(--on-surface); }
+.switch-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px;
+  font-size: .9rem; font-weight: 600;
+  cursor: pointer; user-select: none;
+}
+.switch-row input { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; }

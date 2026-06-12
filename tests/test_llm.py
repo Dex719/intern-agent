@@ -62,3 +62,20 @@ def test_resolve_config_providers(monkeypatch):
 def test_screen_accepts_openai_object_wrapper():
     items = llm._validate_screen({"items": [{"id": 5, "score": 55, "reason": "ок"}]})
     assert items == [{"id": "5", "score": 55, "reason": "ок"}]
+
+
+def test_resolve_config_new_providers():
+    for provider, model in [
+        ("anthropic", "claude-sonnet-4-5"),
+        ("groq", "llama-3.3-70b-versatile"),
+        ("deepseek", "deepseek-chat"),
+        ("mistral", "mistral-small-latest"),
+    ]:
+        cfg = llm.resolve_config({"llm_provider": provider, "llm_api_key": "k"})
+        assert cfg["provider"] == provider
+        assert cfg["model"] == model
+
+
+def test_resolve_config_unknown_provider_falls_back():
+    cfg = llm.resolve_config({"llm_provider": "nope", "llm_api_key": "k"})
+    assert cfg["provider"] == "gemini"
