@@ -1,5 +1,7 @@
 # Intern Agent
 
+**Live: [intern-agent-production.up.railway.app](https://intern-agent-production.up.railway.app/)**
+
 AI agent that helps students land internships. It scans fresh vacancies on **hh.kz** by your search queries, scores each one against your resume and shows only the ones worth applying to. One click on **Apply** — and the AI writes a cover letter and tailors your resume for that exact vacancy.
 
 - **Vacancy feed** — the agent searches hh.kz, screens every new vacancy against your resume in a single LLM pass and ranks them by score; ignore or apply in one click
