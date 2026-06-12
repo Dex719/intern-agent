@@ -270,9 +270,6 @@
       <button id="logs-btn" class="btn btn-text btn-sm" type="button">
         <span data-icon="terminal" data-icon-size="16"></span> Логи
       </button>
-      <button id="logout-btn" class="btn btn-text btn-sm" type="button">
-        <span data-icon="logout" data-icon-size="16"></span> Выйти
-      </button>
       <span style="flex:1"></span>
       <button id="settings-cancel" class="btn btn-text" type="button">Отмена</button>
       <button id="settings-save" class="btn btn-filled" type="button">Сохранить</button>
@@ -292,18 +289,6 @@
     </div>
     <pre id="logs-body" class="log-pre">Загружаю…</pre>
   </dialog>
-
-  <!-- Вход -->
-  <div id="auth-overlay" class="auth-overlay" style="display:none">
-    <div class="card auth-card">
-      <span data-icon="lock" data-icon-size="30"></span>
-      <h2 id="auth-title">Вход</h2>
-      <p id="auth-hint" class="feed-sub" style="margin:0 0 18px"></p>
-      <input id="auth-pass" class="text-input" type="password" placeholder="Пароль (минимум 8 символов)"
-             autocomplete="current-password" style="margin-bottom:14px" />
-      <button id="auth-btn" class="btn btn-filled" type="button" style="width:100%">Войти</button>
-    </div>
-  </div>
 
   <div id="toast" class="toast" popover="manual"></div>
 
@@ -334,7 +319,6 @@
         ...options,
       });
       const data = await resp.json().catch(() => ({}));
-      if (resp.status === 401) { showAuth("login"); throw new Error("Требуется вход"); }
       if (!resp.ok) throw new Error(data.detail || "Что-то пошло не так");
       return data;
     }
@@ -819,34 +803,6 @@
 
     $("detail-close").addEventListener("click", () => $("detail-dialog").close());
 
-    /* ---------- вход ---------- */
-    let authMode = "login";
-    function showAuth(mode) {
-      authMode = mode;
-      $("auth-title").textContent = mode === "setup" ? "Придумай пароль" : "Вход";
-      $("auth-hint").textContent = mode === "setup"
-        ? "Первый запуск: задай пароль, чтобы сайт видел только ты."
-        : "Введи пароль, чтобы продолжить.";
-      $("auth-btn").textContent = mode === "setup" ? "Сохранить и войти" : "Войти";
-      $("auth-overlay").style.display = "";
-      setTimeout(() => $("auth-pass").focus(), 80);
-    }
-    async function submitAuth() {
-      const password = $("auth-pass").value;
-      if (password.length < 8) { toast("Пароль — минимум 8 символов"); return; }
-      $("auth-btn").disabled = true;
-      try {
-        await api(authMode === "setup" ? "/api/auth/setup" : "/api/auth/login",
-          { method: "POST", body: JSON.stringify({ password }) });
-        $("auth-overlay").style.display = "none";
-        $("auth-pass").value = "";
-        init();
-      } catch (e) { if (e.message !== "Требуется вход") toast(e.message); else toast("Неверный пароль"); }
-      finally { $("auth-btn").disabled = false; }
-    }
-    $("auth-btn").addEventListener("click", submitAuth);
-    $("auth-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
-
     /* ---------- настройки ---------- */
     const settingsDialog = $("settings-dialog");
     let settingsCache = {};
@@ -978,11 +934,6 @@
         toast("Настройки сохранены");
       } catch (e) { toast(e.message); }
     });
-    $("logout-btn").addEventListener("click", async () => {
-      try { await api("/api/auth/logout", { method: "POST" }); } catch { /* ignore */ }
-      location.reload();
-    });
-
     /* ---------- логи ---------- */
     window.openLogs = async function openLogs() {
       $("logs-dialog").showModal();
@@ -1011,12 +962,7 @@
     (async () => {
       if (hhParam === "ok") setTimeout(() => { toast("Аккаунт hh привязан ✅"); openSettings(); }, 600);
       if (hhParam === "error") setTimeout(() => { toast("Не удалось привязать hh — смотри логи"); openLogs(); }, 600);
-      try {
-        const state = await api("/api/auth/state");
-        if (!state.password_set) { showAuth("setup"); return; }
-        if (!state.authed) { showAuth("login"); return; }
-        init();
-      } catch { init(); }
+      init();
     })();
   </script>
 </body>

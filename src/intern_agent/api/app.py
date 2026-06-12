@@ -1,15 +1,15 @@
-"""FastAPI: лента вакансий + анализ + трекер откликов + auth + статика."""
+"""FastAPI: лента вакансий + анализ + трекер откликов + статика."""
 
 import asyncio
 import secrets
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from intern_agent import auth, config, db, hh, hh_account, llm, services
+from intern_agent import config, db, hh, hh_account, llm, services
 
 
 @asynccontextmanager
@@ -24,102 +24,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Intern Agent", version="0.1.0", lifespan=lifespan)
-
-PUBLIC_PATHS = {"/api/health", "/api/auth/state", "/api/auth/setup", "/api/auth/login"}
-
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    """Все /api/* (кроме публичных) требуют сессию, если пароль установлен."""
-    path = request.url.path
-    if path.startswith("/api/") and path not in PUBLIC_PATHS:
-        conn = db.get_conn()
-        try:
-            if auth.password_is_set(conn) and not auth.session_valid(
-                conn, request.cookies.get(auth.COOKIE_NAME)
-            ):
-                return JSONResponse({"detail": "Требуется вход"}, status_code=401)
-        finally:
-            conn.close()
-    return await call_next(request)
-
-
-def _set_session_cookie(request: Request, response: Response, token: str) -> None:
-    secure = (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto", "") == "https"
-    )
-    response.set_cookie(
-        auth.COOKIE_NAME,
-        token,
-        max_age=auth.SESSION_DAYS * 24 * 3600,
-        httponly=True,
-        samesite="lax",
-        secure=secure,
-    )
-
-
-class PasswordIn(BaseModel):
-    password: str = Field(min_length=8, max_length=128)
-
-
-@app.get("/api/auth/state")
-def auth_state(request: Request) -> dict:
-    conn = db.get_conn()
-    try:
-        password_set = auth.password_is_set(conn)
-        authed = not password_set or auth.session_valid(
-            conn, request.cookies.get(auth.COOKIE_NAME)
-        )
-    finally:
-        conn.close()
-    return {"password_set": password_set, "authed": authed}
-
-
-@app.post("/api/auth/setup")
-def auth_setup(body: PasswordIn, request: Request, response: Response) -> dict:
-    """Первичная установка пароля (только пока он не задан)."""
-    conn = db.get_conn()
-    try:
-        if auth.password_is_set(conn):
-            raise HTTPException(403, "Пароль уже установлен")
-        # новый владелец — данные прошлого (резюме, трекер, ключи) не достаются ему
-        db.wipe_personal_data(conn)
-        auth.set_password(conn, body.password)
-        token = auth.create_session(conn)
-        db.add_log(conn, "info", "auth", "пароль установлен")
-    finally:
-        conn.close()
-    _set_session_cookie(request, response, token)
-    return {"ok": True}
-
-
-@app.post("/api/auth/login")
-async def auth_login(body: PasswordIn, request: Request, response: Response) -> dict:
-    conn = db.get_conn()
-    try:
-        if not auth.password_is_set(conn):
-            raise HTTPException(400, "Пароль ещё не установлен")
-        if not auth.check_password(conn, body.password):
-            db.add_log(conn, "warn", "auth", "неверный пароль при входе")
-            await asyncio.sleep(0.7)  # тормозим перебор
-            raise HTTPException(401, "Неверный пароль")
-        token = auth.create_session(conn)
-    finally:
-        conn.close()
-    _set_session_cookie(request, response, token)
-    return {"ok": True}
-
-
-@app.post("/api/auth/logout")
-def auth_logout(request: Request, response: Response) -> dict:
-    conn = db.get_conn()
-    try:
-        auth.drop_session(conn, request.cookies.get(auth.COOKIE_NAME))
-    finally:
-        conn.close()
-    response.delete_cookie(auth.COOKIE_NAME)
-    return {"ok": True}
 
 
 class ResumeIn(BaseModel):
@@ -158,6 +62,16 @@ def write_resume(body: ResumeIn) -> dict:
     conn = db.get_conn()
     try:
         db.save_resume(conn, body.content.strip())
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.delete("/api/resume")
+def delete_resume() -> dict:
+    conn = db.get_conn()
+    try:
+        db.delete_resume(conn)
     finally:
         conn.close()
     return {"ok": True}

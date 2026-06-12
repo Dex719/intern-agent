@@ -37,8 +37,7 @@ The agent scans fresh vacancies on **hh.kz** by your search queries, scores each
 | 💌 **Cover letters** | in Russian and English, ready to send |
 | 📊 **Application tracker** | every analysis is saved with a status pipeline: analyzed → applied → reply → interview → offer / rejected |
 | 🧠 **7 LLM providers** | Gemini, OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, Mistral — your own API key, selectable in the UI |
-| 🔐 **Password login** | single-user auth: PBKDF2 hashing + httpOnly session cookies, set on first launch |
-| 🪵 **Built-in logs viewer** | recent scan/LLM/auth events right in the UI |
+| 🪵 **Built-in logs viewer** | recent scan/LLM events right in the UI |
 
 ## How it works
 
@@ -87,8 +86,7 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 | `GET` / `PUT` | `/api/settings` | search queries & settings |
 | `POST` | `/api/scan` | scan hh by saved queries, score new vacancies into the feed |
 | `GET` / `PATCH` | `/api/feed` | feed items / ignore item |
-| `POST` | `/api/auth/setup` / `login` / `logout` | first-run password setup, sessions |
-| `GET` | `/api/logs` | recent app events (scan, LLM, auth) |
+| `GET` | `/api/logs` | recent app events (scan, LLM) |
 | `GET` / `POST` | `/api/hh/connect` / `resumes` / `disconnect` | hh OAuth linking |
 | `POST` | `/api/feed/{id}/apply` | generate application materials, move to tracker |
 | `GET` | `/api/applications` | tracker list + stats |

@@ -39,12 +39,6 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS sessions (
-    token_hash TEXT PRIMARY KEY,
-    created_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -82,17 +76,6 @@ def get_conn(db_path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
-# ---------- очистка ----------
-
-
-def wipe_personal_data(conn: sqlite3.Connection) -> None:
-    """Чистый старт: стираем данные предыдущего владельца (резюме, трекер,
-    ленту, логи, настройки с ключами и сессии)."""
-    for table in ("resume", "applications", "feed", "logs", "settings", "sessions"):
-        conn.execute(f"DELETE FROM {table}")  # noqa: S608 — имена таблиц фиксированы
-    conn.commit()
-
-
 # ---------- резюме ----------
 
 
@@ -109,6 +92,11 @@ def save_resume(conn: sqlite3.Connection, content: str) -> None:
 def get_resume(conn: sqlite3.Connection) -> dict | None:
     row = conn.execute("SELECT content, updated_at FROM resume WHERE id = 1").fetchone()
     return dict(row) if row else None
+
+
+def delete_resume(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM resume WHERE id = 1")
+    conn.commit()
 
 
 # ---------- отклики ----------
@@ -307,30 +295,6 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
         (key, value),
     )
-    conn.commit()
-
-
-# ---------- сессии ----------
-
-
-def insert_session(conn: sqlite3.Connection, token_hash: str, expires_at: str) -> None:
-    conn.execute(
-        "INSERT INTO sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?)",
-        (token_hash, _now(), expires_at),
-    )
-    conn.execute("DELETE FROM sessions WHERE expires_at < ?", (_now(),))
-    conn.commit()
-
-
-def session_valid(conn: sqlite3.Connection, token_hash: str) -> bool:
-    row = conn.execute(
-        "SELECT expires_at FROM sessions WHERE token_hash = ?", (token_hash,)
-    ).fetchone()
-    return bool(row) and row["expires_at"] >= _now()
-
-
-def delete_session(conn: sqlite3.Connection, token_hash: str) -> None:
-    conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
     conn.commit()
 
 
