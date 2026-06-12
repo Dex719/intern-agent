@@ -83,10 +83,10 @@ def client(tmp_path, monkeypatch):
         },
     )
 
-    async def fake_screen(resume, vacancies):
+    async def fake_screen(resume, vacancies, settings=None):
         return [{"id": v["id"], "score": 75, "reason": "Хорошее совпадение."} for v in vacancies]
 
-    async def fake_analyze(resume, vacancy):
+    async def fake_analyze(resume, vacancy, settings=None):
         return dict(ANALYSIS)
 
     monkeypatch.setattr("intern_agent.api.app.llm.screen_batch", fake_screen)

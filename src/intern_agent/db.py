@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    level TEXT NOT NULL,
+    source TEXT NOT NULL,
+    message TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS feed (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vacancy_id TEXT NOT NULL UNIQUE,
@@ -261,3 +275,65 @@ def set_feed_status(conn: sqlite3.Connection, item_id: int, status: str) -> bool
     cur = conn.execute("UPDATE feed SET status = ? WHERE id = ?", (status, item_id))
     conn.commit()
     return cur.rowcount > 0
+
+
+# ---------- настройки (generic key-value) ----------
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: str = "") -> str:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """INSERT INTO settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (key, value),
+    )
+    conn.commit()
+
+
+# ---------- сессии ----------
+
+
+def insert_session(conn: sqlite3.Connection, token_hash: str, expires_at: str) -> None:
+    conn.execute(
+        "INSERT INTO sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?)",
+        (token_hash, _now(), expires_at),
+    )
+    conn.execute("DELETE FROM sessions WHERE expires_at < ?", (_now(),))
+    conn.commit()
+
+
+def session_valid(conn: sqlite3.Connection, token_hash: str) -> bool:
+    row = conn.execute(
+        "SELECT expires_at FROM sessions WHERE token_hash = ?", (token_hash,)
+    ).fetchone()
+    return bool(row) and row["expires_at"] >= _now()
+
+
+def delete_session(conn: sqlite3.Connection, token_hash: str) -> None:
+    conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+    conn.commit()
+
+
+# ---------- логи ----------
+
+
+def add_log(conn: sqlite3.Connection, level: str, source: str, message: str) -> None:
+    conn.execute(
+        "INSERT INTO logs (ts, level, source, message) VALUES (?, ?, ?, ?)",
+        (_now(), level, source, message[:2000]),
+    )
+    conn.execute(
+        "DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 500)"
+    )
+    conn.commit()
+
+
+def list_logs(conn: sqlite3.Connection, limit: int = 100) -> list[dict]:
+    rows = conn.execute(
+        "SELECT ts, level, source, message FROM logs ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    return [dict(row) for row in rows]

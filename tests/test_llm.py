@@ -42,3 +42,23 @@ def test_parse_response_blocked():
 def test_parse_response_bad_json():
     with pytest.raises(llm.LLMError):
         llm.parse_response(_payload("это не json"))
+
+
+def test_resolve_config_providers(monkeypatch):
+    from intern_agent import config
+
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "env-key")
+    cfg = llm.resolve_config({})
+    assert cfg == {"provider": "gemini", "api_key": "env-key", "model": config.GEMINI_MODEL}
+
+    cfg = llm.resolve_config(
+        {"llm_provider": "openrouter", "llm_api_key": "or-key", "llm_model": "qwen/qwen3"}
+    )
+    assert cfg == {"provider": "openrouter", "api_key": "or-key", "model": "qwen/qwen3"}
+    # свой ключ не подменяется env-ключом для других провайдеров
+    assert llm.resolve_config({"llm_provider": "openai"})["api_key"] == ""
+
+
+def test_screen_accepts_openai_object_wrapper():
+    items = llm._validate_screen({"items": [{"id": 5, "score": 55, "reason": "ок"}]})
+    assert items == [{"id": "5", "score": 55, "reason": "ок"}]

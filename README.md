@@ -5,6 +5,10 @@
 AI agent that helps students land internships. It scans fresh vacancies on **hh.kz** by your search queries, scores each one against your resume and shows only the ones worth applying to. One click on **Apply** — and the AI writes a cover letter and tailors your resume for that exact vacancy.
 
 - **Vacancy feed** — the agent searches hh.kz, screens every new vacancy against your resume in a single LLM pass and ranks them by score; ignore or apply in one click
+- **Scheduled auto-scan** — background scanning every N hours with Telegram notifications for high-score vacancies
+- **Password login** — single-user auth with PBKDF2 hashing and httpOnly session cookies (set on first launch)
+- **Pluggable LLM providers** — Gemini, OpenAI or OpenRouter with your own API key, configurable in the UI
+- **Built-in logs viewer** — recent scan/LLM/auth events right in the UI for quick debugging
 - **Match score (0–100)** with an honest verdict — is it worth applying?
 - **Matched vs missing requirements** — what you already cover and what to learn
 - **Actionable recommendations** for this specific vacancy
@@ -60,6 +64,8 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 | `GET` / `PUT` | `/api/settings` | search queries for the feed |
 | `POST` | `/api/scan` | scan hh by saved queries, score new vacancies into the feed |
 | `GET` / `PATCH` | `/api/feed` | feed items / ignore item |
+| `POST` | `/api/auth/setup` / `login` / `logout` | first-run password setup, sessions |
+| `GET` | `/api/logs` | recent app events (scan, LLM, auth) |
 | `POST` | `/api/feed/{id}/apply` | generate application materials, move to tracker |
 | `GET` | `/api/applications` | tracker list + stats |
 | `GET` / `PATCH` / `DELETE` | `/api/applications/{id}` | detail / update status / remove |
@@ -68,11 +74,11 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 
 ```bash
 ruff check src tests
-PYTHONPATH=src pytest -q   # 38 tests
+PYTHONPATH=src pytest -q   # 45 tests
 ```
 
 ## Roadmap
 
-- [ ] Scheduled auto-scan → Telegram notifications
+- [x] Scheduled auto-scan → Telegram notifications
 - [ ] Response/conversion analytics in the tracker
 - [ ] PDF export of the tailored resume

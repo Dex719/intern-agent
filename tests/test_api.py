@@ -24,7 +24,7 @@ ANALYSIS = {
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
 
-    async def fake_analyze(resume, vacancy):
+    async def fake_analyze(resume, vacancy, settings=None):
         return dict(ANALYSIS)
 
     monkeypatch.setattr("intern_agent.api.app.llm.analyze", fake_analyze)
