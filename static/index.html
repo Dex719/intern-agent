@@ -72,9 +72,9 @@
         <p class="title" style="display:flex;align-items:center;gap:10px">
           <span class="spinner" style="color:var(--primary)"></span>
           <span id="scan-phrase">Ищу свежие вакансии…</span>
+          <span class="progress-pct" id="scan-pct">0%</span>
         </p>
-        <div class="skeleton" style="height:16px;width:60%;margin-top:16px"></div>
-        <div class="skeleton" style="height:16px;width:80%;margin-top:10px"></div>
+        <div class="progress-track"><div class="progress-bar" id="scan-bar"></div></div>
       </div>
 
       <div id="feed-error" class="card pop-in" role="alert"
@@ -132,10 +132,9 @@
         <p class="title" style="display:flex;align-items:center;gap:10px">
           <span class="spinner" style="color:var(--primary)"></span>
           <span id="loading-phrase">Агент читает вакансию…</span>
+          <span class="progress-pct" id="loading-pct">0%</span>
         </p>
-        <div class="skeleton" style="height:18px;width:55%;margin-top:16px"></div>
-        <div class="skeleton" style="height:38px;width:75%;margin-top:14px"></div>
-        <div class="skeleton" style="height:14px;width:100%;margin-top:18px"></div>
+        <div class="progress-track"><div class="progress-bar" id="loading-bar"></div></div>
       </div>
 
       <section id="result" style="display:none;margin-top:24px"></section>
@@ -444,6 +443,8 @@
       $("scan-btn").disabled = on;
       $("scan-text").textContent = on ? "Сканирую…" : "Сканировать hh";
       clearInterval(scanTimer);
+      if (on) progressStart("scan-bar", "scan-pct", 35000);
+      else progressFinish("scan-bar", "scan-pct");
       if (on) {
         let i = 0;
         $("scan-phrase").textContent = SCAN_PHRASES[0];
@@ -466,7 +467,7 @@
               <span class="feed-pos">${esc(it.position || "Вакансия")}</span>
               <span class="feed-sub">${esc(it.company || "")}</span>
             </div>
-            <p class="feed-sub" style="margin-top:3px">
+            <p class="feed-meta">
               ${esc(it.salary && it.salary !== "не указана" ? "₸ " + it.salary : "зарплата не указана")} · ${fmtDate(it.created_at)}
               ${it.url ? ` · <a href="${esc(it.url)}" target="_blank" rel="noopener">смотреть на hh</a>` : ""}
             </p>
@@ -550,12 +551,31 @@
       "Переписывает резюме под вакансию…",
       "Пишет сопроводительные…",
     ];
+    // ползунок: плавно ползёт к 92% (тяжёлая часть — LLM), на финише добивается до 100%
+    const progressTimers = {};
+    function progressStart(barId, pctId, expectedMs) {
+      clearInterval(progressTimers[barId]);
+      const bar = $(barId), pct = $(pctId), t0 = Date.now();
+      bar.style.width = "0%"; pct.textContent = "0%";
+      progressTimers[barId] = setInterval(() => {
+        const p = Math.min(92, 92 * (1 - Math.exp(-(Date.now() - t0) / (expectedMs * .55))));
+        bar.style.width = p + "%";
+        pct.textContent = Math.round(p) + "%";
+      }, 200);
+    }
+    function progressFinish(barId, pctId) {
+      clearInterval(progressTimers[barId]);
+      if ($(barId)) { $(barId).style.width = "100%"; $(pctId).textContent = "100%"; }
+    }
+
     let phraseTimer;
     function setLoading(on) {
       $("loading").style.display = on ? "" : "none";
       $("btn").disabled = on;
       $("manual-btn").disabled = on;
       clearInterval(phraseTimer);
+      if (on) progressStart("loading-bar", "loading-pct", 22000);
+      else progressFinish("loading-bar", "loading-pct");
       if (on) {
         let i = 0;
         $("loading-phrase").textContent = PHRASES[0];

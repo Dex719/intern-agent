@@ -126,25 +126,15 @@ a.btn:hover { text-decoration: none; }
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 750;
-  font-size: 1.05rem;
+  gap: 12px;
+  font-weight: 800;
+  font-size: 1.22rem;
+  letter-spacing: -.01em;
+  font-variation-settings: "wdth" 108;
   color: var(--on-surface);
   cursor: pointer;
 }
 .brand:hover { text-decoration: none; }
-.brand .logo {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: var(--primary-container);
-  color: var(--on-primary-container);
-  overflow: hidden;
-  transition: border-radius .5s cubic-bezier(.34, 1.56, .64, 1), transform .5s cubic-bezier(.34, 1.56, .64, 1);
-}
-.brand:hover .logo { border-radius: 50%; transform: rotate(-8deg) scale(1.06); }
 
 /* ---------- Кнопки ---------- */
 .btn {
@@ -409,11 +399,12 @@ a.btn:hover { text-decoration: none; }
   flex: none;
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   font-weight: 800;
-  font-size: .92rem;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
   background: var(--primary-container);
   color: var(--on-primary-container);
 }
@@ -529,12 +520,40 @@ textarea::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 }
 .pop-in { animation: pop-in .55s cubic-bezier(.34, 1.4, .64, 1) both; }
 
-@keyframes shimmer { to { background-position: -200% 0; } }
-.skeleton {
-  border-radius: 12px;
-  background: linear-gradient(100deg, var(--surface-container-high) 40%, var(--surface-container-highest) 50%, var(--surface-container-high) 60%);
-  background-size: 200% 100%;
-  animation: shimmer 1.3s linear infinite;
+/* ---------- линейный прогресс (M3) ---------- */
+.progress-track {
+  position: relative;
+  height: 8px;
+  margin-top: 18px;
+  border-radius: 999px;
+  background: var(--surface-container-highest);
+  overflow: hidden;
+}
+.progress-track .progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width .6s cubic-bezier(.2, 0, 0, 1);
+}
+.progress-track::after {            /* стоп-индикатор M3 */
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--primary);
+  transform: translateY(-50%);
+}
+.progress-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: .9rem;
+  color: var(--primary);
+  margin-left: auto;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -577,12 +596,14 @@ footer.colophon {
 
 /* ---------- Логотип-аватар ---------- */
 .logo-img {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
   object-fit: cover;
   display: block;
+  transition: border-radius .5s cubic-bezier(.34, 1.56, .64, 1), transform .5s cubic-bezier(.34, 1.56, .64, 1);
 }
+.brand:hover .logo-img { border-radius: 50%; transform: rotate(-8deg) scale(1.06); }
 
 /* ---------- Лента вакансий ---------- */
 .queries-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -609,13 +630,17 @@ footer.colophon {
 .feed-card.leaving { opacity: 0; transform: translateX(40px); }
 .feed-card .score-pill { align-self: start; }
 .feed-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.feed-pos { font-size: 1.06rem; font-weight: 700; }
-.feed-sub { color: var(--on-surface-variant); font-size: .9rem; }
-.feed-reason { grid-column: 2; color: var(--on-surface-variant); font-size: .93rem; line-height: 1.45; margin-top: 2px; }
-.feed-actions { grid-column: 2; display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.feed-pos { font-size: 1.18rem; font-weight: 800; letter-spacing: -.015em; font-variation-settings: "wdth" 105; }
+.feed-sub { color: var(--on-surface-variant); font-size: .9rem; font-weight: 600; }
+.feed-meta { grid-column: 2; color: var(--outline); font-size: .82rem; margin: 4px 0 0; }
+.feed-meta a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.feed-meta a:hover { color: var(--on-surface-variant); }
+.feed-reason { grid-column: 2; color: var(--on-surface-variant); font-size: .93rem; line-height: 1.5; margin-top: 8px; }
+.feed-actions { grid-column: 2; display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+.feed-actions .ignore-btn { color: var(--on-surface-variant); }
 @media (max-width: 560px) {
   .feed-card { grid-template-columns: 1fr; }
-  .feed-reason, .feed-actions { grid-column: 1; }
+  .feed-reason, .feed-meta, .feed-actions { grid-column: 1; }
 }
 
 .score-pill.good { background: var(--success-container, #d2f0cf); color: var(--on-success-container, #103912); }
