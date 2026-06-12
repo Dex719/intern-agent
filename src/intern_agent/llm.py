@@ -121,3 +121,96 @@ async def analyze(resume: str, vacancy: str) -> dict:
     if resp.status_code != 200:
         raise LLMError(f"Gemini API вернуло статус {resp.status_code}")
     return parse_response(resp.json())
+
+
+# ---------- быстрый скрининг пачки вакансий (для ленты) ----------
+
+SCREEN_SCHEMA = {
+    "type": "ARRAY",
+    "items": {
+        "type": "OBJECT",
+        "properties": {
+            "id": {"type": "STRING"},
+            "score": {"type": "INTEGER"},
+            "reason": {"type": "STRING"},
+        },
+        "required": ["id", "score", "reason"],
+    },
+}
+
+SCREEN_PROMPT = """Ты — технический рекрутер. Кандидат ищет стажировку / junior-позицию в IT.
+Быстро оцени каждую вакансию из списка по его резюме.
+
+Для каждой вакансии верни:
+- id: id вакансии без изменений.
+- score: целое 0–100 — насколько кандидату стоит откликаться. Будь реалистичен:
+  для стажировки полное совпадение не нужно, но нерелевантные вакансии
+  (другая профессия, требуется большой опыт) оценивай низко.
+- reason: одно короткое предложение по-русски — почему такой балл.
+
+РЕЗЮМЕ КАНДИДАТА:
+---
+{resume}
+---
+
+ВАКАНСИИ:
+{vacancies}
+"""
+
+
+def parse_screen_response(payload: dict) -> list[dict]:
+    try:
+        text = payload["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError) as exc:
+        raise LLMError("Пустой ответ от Gemini") from exc
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.strip("`").removeprefix("json").strip()
+    try:
+        items = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise LLMError("Gemini вернул некорректный JSON") from exc
+    result = []
+    for item in items if isinstance(items, list) else []:
+        try:
+            result.append(
+                {
+                    "id": str(item["id"]),
+                    "score": max(0, min(100, int(item["score"]))),
+                    "reason": str(item.get("reason", "")).strip(),
+                }
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not result:
+        raise LLMError("Gemini не вернул оценки вакансий")
+    return result
+
+
+async def screen_batch(resume: str, vacancies: list[dict]) -> list[dict]:
+    """Один вызов Gemini: список {id, text} -> список {id, score, reason}."""
+    if not config.GEMINI_API_KEY:
+        raise LLMError("GEMINI_API_KEY не задан — добавь его в переменные окружения")
+    blocks = [
+        f"=== Вакансия id={v['id']} ===\n{v['text'][:3500]}" for v in vacancies
+    ]
+    prompt = SCREEN_PROMPT.format(resume=resume.strip(), vacancies="\n\n".join(blocks))
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "responseMimeType": "application/json",
+            "responseSchema": SCREEN_SCHEMA,
+        },
+    }
+    url = API_URL.format(model=config.GEMINI_MODEL)
+    async with httpx.AsyncClient(timeout=config.GEMINI_TIMEOUT) as client:
+        try:
+            resp = await client.post(url, params={"key": config.GEMINI_API_KEY}, json=body)
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Gemini API недоступно: {exc}") from exc
+    if resp.status_code == 429:
+        raise LLMError("Лимит запросов Gemini исчерпан — подожди минуту и попробуй снова")
+    if resp.status_code != 200:
+        raise LLMError(f"Gemini API вернуло статус {resp.status_code}")
+    return parse_screen_response(resp.json())

@@ -189,3 +189,62 @@ def vacancy_meta(data: dict) -> dict:
         "position": data.get("name"),
         "url": data.get("alternate_url"),
     }
+
+
+# ---------- поиск вакансий (для ленты) ----------
+
+SEARCH_ITEM_RE = re.compile(
+    r'data-qa="serp-item__title[^"]*"[^>]*href="[^"]*?/vacancy/(\d+)', re.IGNORECASE
+)
+
+
+def search_vacancies_api(query: str, area: str) -> list[str]:
+    """GET /vacancies?text=... — id вакансий по запросу (свежие сверху)."""
+    try:
+        resp = httpx.get(
+            f"{config.HH_API_BASE}/vacancies",
+            params={
+                "text": query,
+                "area": area,
+                "order_by": "publication_time",
+                "per_page": 20,
+            },
+            headers={"User-Agent": config.HH_USER_AGENT},
+            timeout=config.HH_TIMEOUT,
+            follow_redirects=True,
+        )
+    except httpx.HTTPError as exc:
+        raise HHError(f"hh API недоступно: {exc}") from exc
+    if resp.status_code != 200:
+        raise HHError(f"hh API вернуло статус {resp.status_code}")
+    return [str(item["id"]) for item in resp.json().get("items", [])]
+
+
+def search_vacancies_html(query: str, area: str) -> list[str]:
+    """Запасной путь: id вакансий со страницы поиска hh.kz."""
+    try:
+        resp = httpx.get(
+            "https://hh.kz/search/vacancy",
+            params={"text": query, "area": area, "order_by": "publication_time"},
+            headers={"User-Agent": config.HH_BROWSER_UA, "Accept-Language": "ru"},
+            timeout=config.HH_TIMEOUT,
+            follow_redirects=True,
+        )
+    except httpx.HTTPError as exc:
+        raise HHError(f"hh.kz недоступен: {exc}") from exc
+    if resp.status_code != 200:
+        raise HHError(f"hh.kz вернул статус {resp.status_code}")
+    seen: list[str] = []
+    for vacancy_id in SEARCH_ITEM_RE.findall(resp.text):
+        if vacancy_id not in seen:
+            seen.append(vacancy_id)
+    return seen
+
+
+def search_vacancies(query: str, area: str | None = None) -> list[str]:
+    """Сначала открытое API; если оно закрыто для IP сервера — HTML-страница поиска."""
+    area = area or config.DEFAULT_SEARCH_AREA
+    try:
+        return search_vacancies_api(query, area)
+    except HHError:
+        return search_vacancies_html(query, area)

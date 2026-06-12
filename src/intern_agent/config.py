@@ -28,3 +28,9 @@ HH_TIMEOUT = float(os.getenv("HH_TIMEOUT", "20"))
 
 # Статусы воронки откликов.
 APPLICATION_STATUSES = ["analyzed", "applied", "reply", "interview", "offer", "rejected"]
+
+# Лента вакансий (автоскан).
+FEED_STATUSES = ["new", "applied", "ignored"]
+SCAN_MAX_NEW = int(os.getenv("SCAN_MAX_NEW", "10"))
+DEFAULT_SEARCH_QUERIES = ["python стажер", "python intern", "junior python разработчик"]
+DEFAULT_SEARCH_AREA = os.getenv("HH_AREA", "160")  # 160 = Алматы

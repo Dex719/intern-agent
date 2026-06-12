@@ -1,7 +1,8 @@
 # Intern Agent
 
-AI agent that helps students land internships. Paste a vacancy link from **hh.kz** (or raw text from LinkedIn / anywhere else) — the agent compares it against your resume and returns:
+AI agent that helps students land internships. It scans fresh vacancies on **hh.kz** by your search queries, scores each one against your resume and shows only the ones worth applying to. One click on **Apply** — and the AI writes a cover letter and tailors your resume for that exact vacancy.
 
+- **Vacancy feed** — the agent searches hh.kz, screens every new vacancy against your resume in a single LLM pass and ranks them by score; ignore or apply in one click
 - **Match score (0–100)** with an honest verdict — is it worth applying?
 - **Matched vs missing requirements** — what you already cover and what to learn
 - **Actionable recommendations** for this specific vacancy
@@ -14,13 +15,14 @@ No invented experience: the agent works strictly with facts from your resume.
 ## How it works
 
 ```
-hh.kz link ──► hh API (api.hh.ru) ──► fallback: JSON-LD from the vacancy page
-                                │
-raw vacancy text ───────────────┤
-                                ▼
-              your resume + vacancy ──► Gemini (structured JSON output)
-                                ▼
-              score / gaps / tailored resume / cover letters ──► SQLite tracker
+search queries ──► hh search (api.hh.ru ──► fallback: hh.kz HTML)
+                        │ new vacancy ids
+hh.kz link ─────────────┤ details: hh API ──► fallback: JSON-LD from the page
+raw vacancy text ───────┤
+                        ▼
+   your resume + vacancies ──► Gemini (structured JSON output)
+                        ▼
+   feed scores ──► Apply: tailored resume + cover letters ──► SQLite tracker
 ```
 
 - **Vacancy fetching** — official open hh API first; if it's unavailable for the server IP, the agent falls back to parsing schema.org JobPosting JSON-LD straight from the vacancy page.
@@ -53,6 +55,10 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 | `GET` | `/api/health` | health check |
 | `GET` / `PUT` | `/api/resume` | get / save resume |
 | `POST` | `/api/analyze` | `{url}` or `{text}` → full analysis, saved to tracker |
+| `GET` / `PUT` | `/api/settings` | search queries for the feed |
+| `POST` | `/api/scan` | scan hh by saved queries, score new vacancies into the feed |
+| `GET` / `PATCH` | `/api/feed` | feed items / ignore item |
+| `POST` | `/api/feed/{id}/apply` | generate application materials, move to tracker |
 | `GET` | `/api/applications` | tracker list + stats |
 | `GET` / `PATCH` / `DELETE` | `/api/applications/{id}` | detail / update status / remove |
 
@@ -60,11 +66,11 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 
 ```bash
 ruff check src tests
-PYTHONPATH=src pytest -q   # 30 tests
+PYTHONPATH=src pytest -q   # 38 tests
 ```
 
 ## Roadmap
 
-- [ ] Auto-monitor new vacancies by keywords → Telegram notifications
+- [ ] Scheduled auto-scan → Telegram notifications
 - [ ] Response/conversion analytics in the tracker
 - [ ] PDF export of the tailored resume

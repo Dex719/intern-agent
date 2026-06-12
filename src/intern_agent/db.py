@@ -33,6 +33,25 @@ CREATE TABLE IF NOT EXISTS applications (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feed (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vacancy_id TEXT NOT NULL UNIQUE,
+    url TEXT,
+    position TEXT,
+    company TEXT,
+    salary TEXT,
+    score INTEGER,
+    reason TEXT,
+    vacancy_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -168,3 +187,77 @@ def stats_by_status(conn: sqlite3.Connection) -> dict:
         counts[row["status"]] = row["n"]
     counts["total"] = sum(counts.values())
     return counts
+
+
+# ---------- настройки поиска ----------
+
+
+def get_search_queries(conn: sqlite3.Connection) -> list[str]:
+    row = conn.execute("SELECT value FROM settings WHERE key = 'queries'").fetchone()
+    if not row:
+        return list(config.DEFAULT_SEARCH_QUERIES)
+    try:
+        queries = json.loads(row["value"])
+    except json.JSONDecodeError:
+        return list(config.DEFAULT_SEARCH_QUERIES)
+    return [q for q in queries if isinstance(q, str) and q.strip()]
+
+
+def save_search_queries(conn: sqlite3.Connection, queries: list[str]) -> None:
+    conn.execute(
+        """INSERT INTO settings (key, value) VALUES ('queries', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (json.dumps(queries, ensure_ascii=False),),
+    )
+    conn.commit()
+
+
+# ---------- лента вакансий ----------
+
+
+def feed_known_ids(conn: sqlite3.Connection) -> set[str]:
+    rows = conn.execute("SELECT vacancy_id FROM feed").fetchall()
+    return {row["vacancy_id"] for row in rows}
+
+
+def insert_feed_item(conn: sqlite3.Connection, item: dict) -> int:
+    cur = conn.execute(
+        """INSERT OR IGNORE INTO feed
+           (vacancy_id, url, position, company, salary, score, reason, vacancy_text,
+            status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)""",
+        (
+            item["vacancy_id"],
+            item.get("url"),
+            item.get("position"),
+            item.get("company"),
+            item.get("salary"),
+            item.get("score"),
+            item.get("reason"),
+            item.get("vacancy_text", ""),
+            _now(),
+        ),
+    )
+    conn.commit()
+    return int(cur.lastrowid or 0)
+
+
+def list_feed(conn: sqlite3.Connection, status: str = "new") -> list[dict]:
+    rows = conn.execute(
+        """SELECT id, vacancy_id, url, position, company, salary, score, reason,
+                  status, created_at
+           FROM feed WHERE status = ? ORDER BY score DESC, id DESC""",
+        (status,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_feed_item(conn: sqlite3.Connection, item_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM feed WHERE id = ?", (item_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def set_feed_status(conn: sqlite3.Connection, item_id: int, status: str) -> bool:
+    cur = conn.execute("UPDATE feed SET status = ? WHERE id = ?", (status, item_id))
+    conn.commit()
+    return cur.rowcount > 0

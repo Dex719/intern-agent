@@ -34,8 +34,8 @@
   --outline-variant: #cac4d0;
   --inverse-surface: #322f35;
   --inverse-on-surface: #f5eff7;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 2px 6px rgba(0, 0, 0, .08);
-  --shadow-lg: 0 4px 12px rgba(0, 0, 0, .12), 0 12px 32px rgba(29, 27, 32, .14);
+  --shadow: none;
+  --shadow-lg: none;
   color-scheme: light;
 }
 
@@ -70,8 +70,8 @@
   --outline-variant: #49454f;
   --inverse-surface: #e6e0e9;
   --inverse-on-surface: #322f35;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 6px rgba(0, 0, 0, .3);
-  --shadow-lg: 0 4px 12px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+  --shadow: none;
+  --shadow-lg: none;
   color-scheme: dark;
 }
 
@@ -214,7 +214,7 @@ a.btn:hover { text-decoration: none; }
   padding: 24px;
   transition: background-color .4s ease;
 }
-.card-elevated { background: var(--surface-container); box-shadow: var(--shadow); }
+.card-elevated { background: var(--surface-container); border: 1px solid var(--outline-variant); }
 .card-hero { background: var(--primary-container); color: var(--on-primary-container); }
 
 /* ---------- Поле ввода (search bar) ---------- */
@@ -225,10 +225,9 @@ a.btn:hover { text-decoration: none; }
   background: var(--surface-container-high);
   border-radius: 999px;
   padding: 8px 8px 8px 10px;
-  box-shadow: var(--shadow);
-  transition: box-shadow .25s ease, background-color .25s ease, border-radius .35s cubic-bezier(.34, 1.56, .64, 1);
+  transition: background-color .25s ease, border-radius .35s cubic-bezier(.34, 1.56, .64, 1);
 }
-.search-bar:focus-within { box-shadow: var(--shadow-lg); border-radius: 28px; background: var(--surface-container-highest); }
+.search-bar:focus-within { border-radius: 28px; background: var(--surface-container-highest); }
 .search-bar > [data-icon] { color: var(--on-surface-variant); }
 .search-bar input {
   flex: 1;
@@ -276,9 +275,9 @@ a.btn:hover { text-decoration: none; }
   line-height: 1.5;
   padding: 14px 16px;
   outline: none;
-  transition: border-color .2s ease, box-shadow .2s ease;
+  transition: border-color .2s ease;
 }
-.text-area:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+.text-area:focus { border-color: var(--primary); }
 .text-area::placeholder { color: var(--outline); }
 
 /* ---------- Ripple ---------- */
@@ -406,7 +405,7 @@ a.btn:hover { text-decoration: none; }
 .app-row .app-main { flex: 1; min-width: 0; }
 .app-row .app-pos { font-weight: 700; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-row .app-sub { font-size: .85rem; color: var(--on-surface-variant); margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-row .score-pill {
+.score-pill {
   flex: none;
   display: grid;
   place-items: center;
@@ -441,13 +440,12 @@ a.btn:hover { text-decoration: none; }
 
 /* ---------- Диалог ---------- */
 dialog.m3-dialog {
-  border: none;
+  border: 1px solid var(--outline-variant);
   border-radius: 28px;
   background: var(--surface-container-high);
   color: var(--on-surface);
   padding: 26px;
   width: min(640px, calc(100vw - 36px));
-  box-shadow: var(--shadow-lg);
 }
 dialog.m3-dialog::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: blur(3px); }
 
@@ -463,7 +461,6 @@ dialog.m3-dialog::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: bl
   padding: 13px 22px;
   font-size: .92rem;
   font-weight: 600;
-  box-shadow: var(--shadow-lg);
   opacity: 0;
   transition: transform .4s cubic-bezier(.34, 1.4, .64, 1), opacity .3s ease;
   z-index: 60;
@@ -549,3 +546,49 @@ footer.colophon {
   .app-row { flex-wrap: wrap; }
   .app-row .app-main { flex-basis: 100%; order: -1; }
 }
+
+/* ---------- Логотип-аватар ---------- */
+.logo-img {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- Лента вакансий ---------- */
+.queries-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.query-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-size: .88rem;
+  font-weight: 600;
+}
+.feed-card {
+  background: var(--surface-container-low);
+  border-radius: 24px;
+  padding: 20px 22px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  transition: background-color .25s ease, opacity .35s ease, transform .35s ease;
+}
+.feed-card.leaving { opacity: 0; transform: translateX(40px); }
+.feed-card .score-pill { align-self: start; }
+.feed-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.feed-pos { font-size: 1.06rem; font-weight: 700; }
+.feed-sub { color: var(--on-surface-variant); font-size: .9rem; }
+.feed-reason { grid-column: 2; color: var(--on-surface-variant); font-size: .93rem; line-height: 1.45; margin-top: 2px; }
+.feed-actions { grid-column: 2; display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 560px) {
+  .feed-card { grid-template-columns: 1fr; }
+  .feed-reason, .feed-actions { grid-column: 1; }
+}
+
+.score-pill.good { background: var(--success-container, #d2f0cf); color: var(--on-success-container, #103912); }
+.score-pill.bad { background: var(--error-container); color: var(--on-error-container); }
