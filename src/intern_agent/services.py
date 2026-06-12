@@ -1,6 +1,7 @@
 """Сканирование hh + авто-скан по расписанию + уведомления в Telegram."""
 
 import asyncio
+import html as html_lib
 import sqlite3
 
 import httpx
@@ -170,6 +171,49 @@ async def auto_apply_new_items(conn: sqlite3.Connection, items: list[dict]) -> l
     return applied
 
 
+async def semi_auto_covers(conn: sqlite3.Connection, items: list[dict]) -> list[dict]:
+    """Полуавтомат: hh не привязан — пишет сопроводительное и шлёт его в Telegram,
+    отклик пользователь отправляет руками (копировать → вставить)."""
+    if db.get_setting(conn, "auto_apply_enabled") != "1":
+        return []
+    if db.get_setting(conn, "hh_access_token"):
+        return []  # привязан hh — работает настоящий автоотклик
+    token = db.get_setting(conn, "tg_bot_token")
+    chat_id = db.get_setting(conn, "tg_chat_id")
+    if not (token and chat_id):
+        return []
+    min_score = _safe_int(db.get_setting(conn, "auto_apply_min_score")) or 70
+    good = [it for it in items if (it.get("score") or 0) >= min_score]
+    good = good[:AUTO_APPLY_MAX_PER_RUN]
+    resume = db.get_resume(conn)
+    sent: list[dict] = []
+    for item in good:
+        title = f"{item.get('position') or 'вакансия'} — {item.get('company') or ''}".strip(" —")
+        try:
+            result = await llm.analyze(
+                resume["content"], item["vacancy_text"], get_all_settings(conn)
+            )
+            cover = (result.get("cover_letter_ru") or "").strip()
+            if not cover:
+                continue
+            text = (
+                f"✍️ <b>{item.get('score')}/100 · {html_lib.escape(title)}</b>\n"
+                f'<a href="{item.get("url")}">Открыть вакансию и откликнуться</a>\n\n'
+                f"Сопроводительное — скопируй и вставь:\n"
+                f"<pre>{html_lib.escape(cover)}</pre>"
+            )
+            await send_telegram(token, chat_id, text)
+        except (llm.LLMError, httpx.HTTPError) as exc:
+            db.add_log(conn, "error", "cover-tg", f"{title}: {exc}")
+            continue
+        application = build_application(item, result)
+        application["status"] = "analyzed"
+        db.insert_application(conn, application)
+        db.add_log(conn, "info", "cover-tg", f"сопроводительное отправлено в TG: {title}")
+        sent.append(item)
+    return sent
+
+
 # ---------- Telegram ----------
 
 
@@ -188,18 +232,30 @@ async def send_telegram(token: str, chat_id: str, text: str) -> None:
         resp.raise_for_status()
 
 
-def format_notification(items: list[dict], applied: list[dict] | None = None) -> str:
+def format_notification(
+    items: list[dict],
+    applied: list[dict] | None = None,
+    covered: list[dict] | None = None,
+) -> str:
     applied_ids = {it.get("vacancy_id") for it in applied or []}
+    covered_ids = {it.get("vacancy_id") for it in covered or []}
     lines = ["<b>Новые стоящие вакансии</b>"]
     for it in items[:8]:
         title = f"{it.get('position') or 'Вакансия'} — {it.get('company') or ''}".strip(" —")
-        mark = " ✅ отклик отправлен" if it.get("vacancy_id") in applied_ids else ""
+        mark = ""
+        if it.get("vacancy_id") in applied_ids:
+            mark = " ✅ отклик отправлен"
+        elif it.get("vacancy_id") in covered_ids:
+            mark = " ✍️ сопроводительное выше"
         lines.append(f"• <b>{it.get('score')}</b>/100 <a href=\"{it.get('url')}\">{title}</a>{mark}")
     return "\n".join(lines)
 
 
 async def notify_new_items(
-    conn: sqlite3.Connection, items: list[dict], applied: list[dict] | None = None
+    conn: sqlite3.Connection,
+    items: list[dict],
+    applied: list[dict] | None = None,
+    covered: list[dict] | None = None,
 ) -> bool:
     """Шлёт в TG вакансии со скором выше порога, если бот настроен."""
     token = db.get_setting(conn, "tg_bot_token")
@@ -207,7 +263,7 @@ async def notify_new_items(
     good = [it for it in items if (it.get("score") or 0) >= NOTIFY_MIN_SCORE]
     if not (token and chat_id and good):
         return False
-    await send_telegram(token, chat_id, format_notification(good, applied))
+    await send_telegram(token, chat_id, format_notification(good, applied, covered))
     return True
 
 
@@ -242,8 +298,9 @@ async def auto_scan_loop() -> None:
             )
             if result["added"]:
                 applied = await auto_apply_new_items(conn, result["new_items"])
+                covered = await semi_auto_covers(conn, result["new_items"])
                 try:
-                    await notify_new_items(conn, result["new_items"], applied)
+                    await notify_new_items(conn, result["new_items"], applied, covered)
                 except httpx.HTTPError as exc:
                     db.add_log(conn, "error", "telegram", f"не смог отправить: {exc}")
         except Exception as exc:  # noqa: BLE001 — фон не должен падать

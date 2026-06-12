@@ -10,6 +10,7 @@ AI agent that helps students land internships. It scans fresh vacancies on **hh.
 - **Pluggable LLM providers** — Gemini, OpenAI, Anthropic (Claude), OpenRouter, Groq, DeepSeek or Mistral with your own API key, configurable in the UI
 - **Built-in logs viewer** — recent scan/LLM/auth events right in the UI for quick debugging
 - **hh account linking (OAuth)** — connect your hh.ru/hh.kz account and the agent applies to vacancies for you with a tailored cover letter, automatically on scheduled scans or in one click from the feed
+- **Semi-auto mode** — no hh app? The agent still writes the cover letter for every good match and sends it to Telegram with a vacancy link: copy, paste, done
 - **Match score (0–100)** with an honest verdict — is it worth applying?
 - **Matched vs missing requirements** — what you already cover and what to learn
 - **Actionable recommendations** for this specific vacancy
@@ -76,7 +77,7 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 
 ```bash
 ruff check src tests
-PYTHONPATH=src pytest -q   # 54 tests
+PYTHONPATH=src pytest -q   # 56 tests
 ```
 
 ## Roadmap

@@ -449,6 +449,29 @@ dialog.m3-dialog {
 }
 dialog.m3-dialog::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: blur(3px); }
 
+/* ---------- скроллбар в стиле сайта ---------- */
+dialog.m3-dialog,
+.log-pre,
+textarea {
+  scrollbar-width: thin;                              /* Firefox */
+  scrollbar-color: var(--primary) transparent;
+}
+dialog.m3-dialog::-webkit-scrollbar,
+.log-pre::-webkit-scrollbar,
+textarea::-webkit-scrollbar { width: 8px; }
+dialog.m3-dialog::-webkit-scrollbar-track,
+.log-pre::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track { background: transparent; margin: 22px 0; }
+dialog.m3-dialog::-webkit-scrollbar-thumb,
+.log-pre::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--primary) 55%, transparent);
+  border-radius: 999px;
+}
+dialog.m3-dialog::-webkit-scrollbar-thumb:hover,
+.log-pre::-webkit-scrollbar-thumb:hover,
+textarea::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
 /* ---------- Тост ---------- */
 .toast {
   position: fixed;

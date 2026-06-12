@@ -250,6 +250,7 @@
       <input id="set-auto-apply" type="checkbox" />
       Автоотклик при авто-скане
     </label>
+    <p class="field-hint" id="auto-apply-hint"></p>
     <div id="auto-apply-score-wrap" style="margin-top:8px">
       <label class="field-label" for="set-apply-score" style="margin-top:0">Откликаться при скоре от</label>
       <select id="set-apply-score" class="select-input">
@@ -874,6 +875,9 @@
       $("hh-disconnect-btn").style.display = linked ? "" : "none";
       $("hh-creds").style.display = linked ? "none" : "";
       $("hh-resume-wrap").style.display = linked ? "" : "none";
+      $("auto-apply-hint").textContent = linked
+        ? "hh привязан: отклики уходят сами с ИИ-сопроводительным."
+        : "Полуавтомат: без привязки hh готовое сопроводительное прилетит в Telegram — скопируй, открой вакансию по ссылке и вставь. Нужны токен и chat id выше.";
       if (linked) loadHHResumes();
     }
     async function loadHHResumes() {

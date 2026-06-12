@@ -1,5 +1,6 @@
 """Привязка hh: OAuth-URL, токены, эндпоинты, автоотклик."""
 
+import asyncio
 import time
 
 import pytest
@@ -78,12 +79,59 @@ def test_auto_apply_skipped_when_disabled(client, monkeypatch):
             return {}
 
         monkeypatch.setattr(services.llm, "analyze", fake_analyze)
-        import asyncio
 
         result = asyncio.get_event_loop().run_until_complete(
             services.auto_apply_new_items(conn, [{"score": 99, "vacancy_id": "1"}])
         )
         assert result == []
         assert not called
+    finally:
+        conn.close()
+
+
+def test_semi_auto_covers_sends_to_telegram(client, monkeypatch):
+    conn = db.get_conn()
+    try:
+        db.set_setting(conn, "auto_apply_enabled", "1")
+        db.set_setting(conn, "tg_bot_token", "tok")
+        db.set_setting(conn, "tg_chat_id", "42")
+        db.save_resume(conn, "x" * 100)
+
+        async def fake_analyze(*args, **kwargs):
+            return {"cover_letter_ru": "Здравствуйте! Хочу к вам.", "match_score": 88}
+
+        sent = []
+
+        async def fake_send(token, chat_id, text):
+            sent.append(text)
+
+        monkeypatch.setattr(services.llm, "analyze", fake_analyze)
+        monkeypatch.setattr(services, "send_telegram", fake_send)
+        items = [{"score": 90, "vacancy_id": "v1", "url": "https://hh.kz/vacancy/1",
+                  "position": "Intern", "company": "Acme", "vacancy_text": "t"}]
+        result = asyncio.get_event_loop().run_until_complete(
+            services.semi_auto_covers(conn, items)
+        )
+        assert len(result) == 1
+        assert "Хочу к вам" in sent[0]
+        assert "hh.kz/vacancy/1" in sent[0]
+        # запись в трекере со статусом analyzed
+        apps = db.list_applications(conn)
+        assert apps and apps[0]["status"] == "analyzed"
+    finally:
+        conn.close()
+
+
+def test_semi_auto_covers_skipped_when_hh_linked(client, monkeypatch):
+    conn = db.get_conn()
+    try:
+        db.set_setting(conn, "auto_apply_enabled", "1")
+        db.set_setting(conn, "tg_bot_token", "tok")
+        db.set_setting(conn, "tg_chat_id", "42")
+        db.set_setting(conn, "hh_access_token", "real-token")
+        result = asyncio.get_event_loop().run_until_complete(
+            services.semi_auto_covers(conn, [{"score": 99, "vacancy_id": "1"}])
+        )
+        assert result == []
     finally:
         conn.close()
