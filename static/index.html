@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intern Agent — AI-агент для поиска стажировок</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,100..125,300..900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/m3.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236750a4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 8V4H8'/%3E%3Crect width='16' height='12' x='4' y='8' rx='2'/%3E%3Cpath d='M2 14h2'/%3E%3Cpath d='M20 14h2'/%3E%3Cpath d='M15 13v2'/%3E%3Cpath d='M9 13v2'/%3E%3C/svg%3E" />
+  <script src="/static/icons.js"></script>
+  <script>
+    // до отрисовки — чтобы не мигала тема
+    document.documentElement.dataset.theme =
+      localStorage.getItem("ia-theme") ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  </script>
+</head>
+<body>
+  <div class="blobs" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+  </div>
+
+  <div class="page">
+    <header class="top-bar reveal">
+      <a class="brand" id="brand">
+        <span class="logo"><span data-icon="bot" data-icon-size="26"></span></span>
+        Intern Agent
+      </a>
+      <div class="spacer"></div>
+      <button id="nav-tracker" class="btn btn-tonal btn-sm" type="button">
+        <span data-icon="list" data-icon-size="19"></span>
+        Трекер <span id="tracker-count"></span>
+      </button>
+      <button id="resume-btn" class="icon-btn" type="button" aria-label="Моё резюме" title="Моё резюме">
+        <span data-icon="user" data-icon-size="22"></span>
+      </button>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Переключить тему">
+        <span id="theme-icon"></span>
+      </button>
+    </header>
+
+    <!-- ===== Анализ ===== -->
+    <main id="view-analyze" class="view active">
+      <section style="padding:6vh 0 32px" class="reveal">
+        <h1 class="display">Откликайся <span class="accent">умнее</span>, а не чаще.</h1>
+        <p class="body-lg" style="max-width:560px;margin-top:18px">
+          Вставь ссылку на вакансию с <b>hh.kz</b> — агент сравнит её с твоим резюме,
+          оценит шансы, перепишет резюме под вакансию и подготовит сопроводительные
+          на русском и английском. Каждый разбор сохраняется в трекер.
+        </p>
+      </section>
+
+      <form id="form" class="search-bar reveal" autocomplete="off">
+        <button type="button" id="paste-btn" class="paste-btn" aria-label="Вставить ссылку из буфера обмена" title="Вставить из буфера">
+          <span data-icon="link" data-icon-size="22"></span>
+        </button>
+        <input id="url" type="url" required placeholder="https://hh.kz/vacancy/…" aria-label="Ссылка на вакансию" />
+        <button id="btn" type="submit" class="btn btn-filled">
+          <span id="btn-icon" data-icon="sparkles" data-icon-size="20"></span>
+          <span id="btn-text">Анализ</span>
+        </button>
+      </form>
+
+      <div class="reveal" style="margin-top:10px">
+        <button id="manual-toggle" class="btn btn-text btn-sm" type="button">
+          <span data-icon="file-text" data-icon-size="18"></span>
+          LinkedIn или другая площадка? Вставь текст вакансии
+        </button>
+      </div>
+
+      <div id="manual-card" class="card" style="display:none;margin-top:12px">
+        <p class="title" style="margin-bottom:12px">Текст вакансии</p>
+        <textarea id="manual-text" class="text-area" placeholder="Скопируй сюда описание вакансии целиком: позиция, компания, требования…"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+          <button id="manual-btn" class="btn btn-filled" type="button">
+            <span data-icon="sparkles" data-icon-size="20"></span>
+            Анализировать
+          </button>
+        </div>
+      </div>
+
+      <div id="loading" class="card" style="display:none;margin-top:24px">
+        <p class="title" style="display:flex;align-items:center;gap:10px">
+          <span class="spinner" style="color:var(--primary)"></span>
+          <span id="loading-phrase">Агент читает вакансию…</span>
+        </p>
+        <div class="skeleton" style="height:18px;width:55%;margin-top:16px"></div>
+        <div class="skeleton" style="height:38px;width:75%;margin-top:14px"></div>
+        <div class="skeleton" style="height:14px;width:100%;margin-top:18px"></div>
+        <div class="skeleton" style="height:14px;width:88%;margin-top:10px"></div>
+      </div>
+
+      <section id="result" style="display:none;margin-top:24px"></section>
+
+      <div id="error" class="card pop-in" role="alert"
+           style="display:none;margin-top:24px;background:var(--error-container);color:var(--on-error-container)"></div>
+    </main>
+
+    <!-- ===== Трекер ===== -->
+    <main id="view-tracker" class="view">
+      <div class="top-bar" style="padding:14px 0 22px">
+        <button id="nav-back" class="btn btn-text btn-sm" type="button">
+          <span data-icon="arrow-left" data-icon-size="19"></span>
+          К анализу
+        </button>
+      </div>
+      <h2 class="headline" style="margin-bottom:18px">Трекер откликов</h2>
+      <div id="stats" class="stat-grid" style="margin-bottom:22px"></div>
+      <div id="app-list" style="display:grid;gap:10px"></div>
+      <div id="tracker-empty" class="card" style="display:none;text-align:center;padding:46px 24px">
+        <span data-icon="briefcase" data-icon-size="44" style="color:var(--outline)"></span>
+        <p class="title" style="margin-top:14px">Пока пусто</p>
+        <p class="body-lg" style="margin:8px 0 0">Проанализируй первую вакансию — она появится здесь.</p>
+      </div>
+    </main>
+
+    <footer class="colophon reveal">
+      Gemini · hh.ru API · пет-проект, не карьерный совет
+    </footer>
+  </div>
+
+  <!-- ===== Диалог: резюме ===== -->
+  <dialog id="resume-dialog" class="m3-dialog">
+    <h3 class="headline" style="display:flex;align-items:center;gap:10px">
+      <span data-icon="user" data-icon-size="24" style="color:var(--primary)"></span>
+      Моё резюме
+    </h3>
+    <p class="body-lg" style="font-size:.92rem;margin:10px 0 14px">
+      Вставь текст резюме один раз — агент будет сравнивать с ним каждую вакансию.
+      Хранится только в базе приложения.
+    </p>
+    <textarea id="resume-text" class="text-area" style="min-height:260px" placeholder="Имя, контакты, о себе, проекты, навыки, образование…"></textarea>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+      <button id="resume-cancel" class="btn btn-text" type="button">Отмена</button>
+      <button id="resume-save" class="btn btn-filled" type="button">
+        <span data-icon="check" data-icon-size="20"></span>
+        Сохранить
+      </button>
+    </div>
+  </dialog>
+
+  <!-- ===== Диалог: детали отклика ===== -->
+  <dialog id="detail-dialog" class="m3-dialog" style="width:min(760px,calc(100vw - 36px))">
+    <div style="display:flex;justify-content:flex-end">
+      <button id="detail-close" class="icon-btn" type="button" aria-label="Закрыть">
+        <span data-icon="x" data-icon-size="22"></span>
+      </button>
+    </div>
+    <div id="detail-body"></div>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    /* ---------- тема ---------- */
+    const themeIcon = document.getElementById("theme-icon");
+    const syncIcon = () =>
+      themeIcon.innerHTML = iaIcon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon");
+    syncIcon();
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem("ia-theme", next);
+      syncIcon();
+    });
+
+    /* ---------- появление при загрузке ---------- */
+    document.querySelectorAll(".reveal").forEach((el, i) =>
+      setTimeout(() => el.classList.add("in"), 80 + i * 110));
+
+    /* ---------- утилиты ---------- */
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    async function api(path, options = {}) {
+      const resp = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.detail || "Что-то пошло не так");
+      return data;
+    }
+
+    let toastTimer;
+    function toast(text) {
+      const el = $("toast");
+      el.textContent = text;
+      el.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
+    }
+
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("Скопировано в буфер");
+      } catch {
+        toast("Не удалось скопировать");
+      }
+    }
+
+    const STATUSES = {
+      analyzed: "Разобрано",
+      applied: "Отклик отправлен",
+      reply: "Есть ответ",
+      interview: "Интервью",
+      offer: "Оффер",
+      rejected: "Отказ",
+    };
+    const fmtDate = (iso) => new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+
+    /* ---------- навигация ---------- */
+    function showView(name) {
+      document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+      $("view-" + name).classList.add("active");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (name === "tracker") loadTracker();
+    }
+    $("nav-tracker").addEventListener("click", () => showView("tracker"));
+    $("nav-back").addEventListener("click", () => showView("analyze"));
+    $("brand").addEventListener("click", () => showView("analyze"));
+
+    /* ---------- резюме ---------- */
+    let hasResume = false;
+    const resumeDialog = $("resume-dialog");
+    $("resume-btn").addEventListener("click", () => resumeDialog.showModal());
+    $("resume-cancel").addEventListener("click", () => resumeDialog.close());
+    $("resume-save").addEventListener("click", async () => {
+      const content = $("resume-text").value.trim();
+      if (content.length < 80) { toast("Слишком короткое резюме (минимум 80 символов)"); return; }
+      try {
+        await api("/api/resume", { method: "PUT", body: JSON.stringify({ content }) });
+        hasResume = true;
+        resumeDialog.close();
+        toast("Резюме сохранено");
+      } catch (e) { toast(e.message); }
+    });
+
+    async function loadResume() {
+      try {
+        const data = await api("/api/resume");
+        hasResume = data.has_resume;
+        if (data.content) $("resume-text").value = data.content;
+        if (!hasResume) setTimeout(() => resumeDialog.showModal(), 900);
+      } catch { /* офлайн — не страшно */ }
+    }
+
+    /* ---------- анализ ---------- */
+    const PHRASES = [
+      "Агент читает вакансию…",
+      "Сравнивает требования с резюме…",
+      "Считает шансы…",
+      "Переписывает резюме под вакансию…",
+      "Пишет сопроводительные…",
+    ];
+    let phraseTimer;
+    function setLoading(on) {
+      $("loading").style.display = on ? "" : "none";
+      $("btn").disabled = on;
+      $("manual-btn").disabled = on;
+      clearInterval(phraseTimer);
+      if (on) {
+        let i = 0;
+        $("loading-phrase").textContent = PHRASES[0];
+        phraseTimer = setInterval(() => {
+          i = (i + 1) % PHRASES.length;
+          const el = $("loading-phrase");
+          el.textContent = PHRASES[i];
+          el.classList.remove("text-swap"); void el.offsetWidth; el.classList.add("text-swap");
+        }, 2600);
+      }
+    }
+
+    function showError(message) {
+      const el = $("error");
+      el.innerHTML = `<p class="title" style="display:flex;align-items:center;gap:10px">
+        <span data-icon="alert-circle" data-icon-size="22"></span>${esc(message)}</p>`;
+      el.style.display = "";
+      iaApplyIcons(el);
+    }
+
+    async function runAnalysis(payload) {
+      if (!hasResume) { resumeDialog.showModal(); toast("Сначала сохрани резюме"); return; }
+      $("error").style.display = "none";
+      $("result").style.display = "none";
+      setLoading(true);
+      try {
+        const item = await api("/api/analyze", { method: "POST", body: JSON.stringify(payload) });
+        renderAnalysis(item, $("result"), true);
+        $("result").style.display = "";
+        $("result").classList.remove("pop-in"); void $("result").offsetWidth;
+        $("result").classList.add("pop-in");
+        refreshCount();
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    $("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      runAnalysis({ url: $("url").value.trim() });
+    });
+    $("manual-btn").addEventListener("click", () =>
+      runAnalysis({ text: $("manual-text").value.trim() }));
+    $("manual-toggle").addEventListener("click", () => {
+      const card = $("manual-card");
+      card.style.display = card.style.display === "none" ? "" : "none";
+      if (card.style.display !== "none") $("manual-text").focus();
+    });
+    $("paste-btn").addEventListener("click", async () => {
+      try {
+        $("url").value = (await navigator.clipboard.readText()).trim();
+        $("paste-btn").classList.add("ok");
+        setTimeout(() => $("paste-btn").classList.remove("ok"), 1200);
+      } catch { toast("Разреши доступ к буферу обмена"); }
+    });
+
+    /* ---------- рендер результата ---------- */
+    function scoreClass(score) { return score >= 70 ? "good" : score >= 45 ? "" : "bad"; }
+    function verdictChip(score) {
+      if (score >= 70) return { cls: "chip-good", icon: "check-circle", label: "Стоит откликнуться" };
+      if (score >= 45) return { cls: "chip-fair", icon: "target", label: "Шансы есть" };
+      return { cls: "chip-bad", icon: "x-circle", label: "Слабое совпадение" };
+    }
+
+    function renderAnalysis(item, container, savedNote = false) {
+      const score = item.match_score ?? 0;
+      const chip = verdictChip(score);
+      const R = 58, C = 2 * Math.PI * R;
+      const chips = (arr, icon, cls) => (arr || []).map((t) =>
+        `<span class="chip chip-sm ${cls}"><span data-icon="${icon}" data-icon-size="15"></span>${esc(t)}</span>`).join("");
+      const recs = (item.recommendations || []).map((t) =>
+        `<li><span data-icon="lightbulb" data-icon-size="18"></span><span>${esc(t)}</span></li>`).join("");
+
+      container.innerHTML = `
+        <div class="card card-elevated">
+          <div class="score-wrap">
+            <div class="score-ring ${scoreClass(score)}">
+              <svg width="132" height="132" viewBox="0 0 132 132" fill="none">
+                <circle class="track" cx="66" cy="66" r="${R}" stroke-width="11"/>
+                <circle class="bar" cx="66" cy="66" r="${R}" stroke-width="11"
+                        stroke-dasharray="${C}" stroke-dashoffset="${C}"/>
+              </svg>
+              <div class="score-num"><span class="sn">0</span><small>из 100</small></div>
+            </div>
+            <div style="flex:1;min-width:220px">
+              <span class="chip ${chip.cls}"><span data-icon="${chip.icon}" data-icon-size="20"></span>${chip.label}</span>
+              <h3 class="headline" style="margin-top:14px">${esc(item.position || "Вакансия")}</h3>
+              <p class="body-lg" style="margin:6px 0 0">
+                ${esc(item.company || "")}${item.url ? ` · <a href="${esc(item.url)}" target="_blank" rel="noopener">открыть вакансию <span data-icon="external-link" data-icon-size="14"></span></a>` : ""}
+              </p>
+              <p class="body-lg" style="font-size:.95rem;margin:10px 0 0">${esc(item.verdict || "")}</p>
+            </div>
+          </div>
+
+          ${(item.matched || []).length ? `<div class="req-section">
+            <p class="label"><span data-icon="check-circle" data-icon-size="17"></span>УЖЕ ЗАКРЫВАЕШЬ</p>
+            <div class="chip-row">${chips(item.matched, "check", "chip-good")}</div>
+          </div>` : ""}
+
+          ${(item.missing || []).length ? `<div class="req-section">
+            <p class="label"><span data-icon="x-circle" data-icon-size="17"></span>ЧЕГО НЕ ХВАТАЕТ</p>
+            <div class="chip-row">${chips(item.missing, "x", "chip-bad")}</div>
+          </div>` : ""}
+
+          ${recs ? `<div class="req-section">
+            <p class="label"><span data-icon="lightbulb" data-icon-size="17"></span>РЕКОМЕНДАЦИИ</p>
+            <ul class="rec-list">${recs}</ul>
+          </div>` : ""}
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <p class="title" style="flex:1"><span data-icon="file-text" data-icon-size="19"></span> Резюме под эту вакансию</p>
+            <button class="btn btn-tonal btn-sm copy-btn" data-copy="tailored" type="button">
+              <span data-icon="copy" data-icon-size="17"></span> Копировать
+            </button>
+          </div>
+          <p class="letter-body" data-text="tailored">${esc(item.tailored_resume || "")}</p>
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <p class="title" style="flex:1"><span data-icon="mail" data-icon-size="19"></span> Сопроводительное</p>
+            <div class="seg-tabs">
+              <button type="button" class="active" data-letter="ru">Русский</button>
+              <button type="button" data-letter="en">English</button>
+            </div>
+            <button class="btn btn-tonal btn-sm copy-btn" data-copy="letter" type="button">
+              <span data-icon="copy" data-icon-size="17"></span> Копировать
+            </button>
+          </div>
+          <p class="letter-body" data-text="letter">${esc(item.cover_letter_ru || "")}</p>
+        </div>
+
+        ${savedNote ? `<p class="label" style="display:flex;align-items:center;gap:7px;margin-top:14px">
+          <span data-icon="check-circle" data-icon-size="16" style="color:var(--success)"></span>
+          Сохранено в трекер откликов
+        </p>` : ""}
+      `;
+      iaApplyIcons(container);
+
+      // скор-кольцо + счётчик
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        container.querySelector(".bar").style.strokeDashoffset = C * (1 - score / 100);
+      }));
+      const numEl = container.querySelector(".sn");
+      const t0 = performance.now(), dur = 1000, ease = (t) => 1 - Math.pow(1 - t, 3);
+      (function tick(now) {
+        const p = Math.min((now - t0) / dur, 1);
+        numEl.textContent = Math.round(score * ease(p));
+        if (p < 1) requestAnimationFrame(tick);
+      })(t0);
+
+      // переключение языка письма
+      let letter = "ru";
+      container.querySelectorAll("[data-letter]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          letter = btn.dataset.letter;
+          container.querySelectorAll("[data-letter]").forEach((b) => b.classList.toggle("active", b === btn));
+          const body = container.querySelector('[data-text="letter"]');
+          body.textContent = letter === "ru" ? (item.cover_letter_ru || "") : (item.cover_letter_en || "");
+          body.classList.remove("text-swap"); void body.offsetWidth; body.classList.add("text-swap");
+        }));
+
+      // копирование
+      container.querySelectorAll(".copy-btn").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const what = btn.dataset.copy;
+          copyText(what === "tailored" ? (item.tailored_resume || "")
+            : letter === "ru" ? (item.cover_letter_ru || "") : (item.cover_letter_en || ""));
+        }));
+    }
+
+    /* ---------- трекер ---------- */
+    async function refreshCount() {
+      try {
+        const { stats } = await api("/api/applications");
+        $("tracker-count").textContent = stats.total ? `· ${stats.total}` : "";
+      } catch { /* ignore */ }
+    }
+
+    async function loadTracker() {
+      const { items, stats } = await api("/api/applications");
+      $("stats").innerHTML = `
+        <div class="stat-card"><p class="label">Всего разборов</p><p class="value">${stats.total}</p></div>
+        <div class="stat-card"><p class="label">Откликов</p><p class="value">${stats.applied + stats.reply + stats.interview + stats.offer}</p></div>
+        <div class="stat-card"><p class="label">Интервью + офферы</p><p class="value">${stats.interview + stats.offer}</p></div>
+      `;
+      $("tracker-empty").style.display = items.length ? "none" : "";
+      $("app-list").innerHTML = items.map((it) => `
+        <div class="app-row" data-id="${it.id}">
+          <span class="score-pill">${it.match_score ?? "—"}</span>
+          <div class="app-main">
+            <p class="app-pos">${esc(it.position || "Вакансия")}</p>
+            <p class="app-sub">${esc(it.company || "—")} · ${fmtDate(it.created_at)}${it.url ? ` · <a href="${esc(it.url)}" target="_blank" rel="noopener" data-stop>hh</a>` : ""}</p>
+          </div>
+          <select class="status-select st-${it.status}" data-stop aria-label="Статус">
+            ${Object.entries(STATUSES).map(([v, l]) =>
+              `<option value="${v}" ${v === it.status ? "selected" : ""}>${l}</option>`).join("")}
+          </select>
+          <button class="icon-btn del-btn" data-stop type="button" aria-label="Удалить" style="width:38px;height:38px">
+            <span data-icon="trash" data-icon-size="18"></span>
+          </button>
+        </div>
+      `).join("");
+      iaApplyIcons($("app-list"));
+
+      $("app-list").querySelectorAll(".app-row").forEach((row) => {
+        const id = row.dataset.id;
+        row.addEventListener("click", async (e) => {
+          if (e.target.closest("[data-stop]")) return;
+          const item = await api(`/api/applications/${id}`);
+          renderAnalysis(item, $("detail-body"));
+          $("detail-dialog").showModal();
+        });
+        row.querySelector(".status-select").addEventListener("change", async (e) => {
+          try {
+            await api(`/api/applications/${id}`, { method: "PATCH", body: JSON.stringify({ status: e.target.value }) });
+            e.target.className = `status-select st-${e.target.value}`;
+            toast("Статус обновлён");
+          } catch (err) { toast(err.message); }
+        });
+        row.querySelector(".del-btn").addEventListener("click", async () => {
+          if (!confirm("Удалить этот разбор из трекера?")) return;
+          try {
+            await api(`/api/applications/${id}`, { method: "DELETE" });
+            loadTracker();
+            refreshCount();
+          } catch (err) { toast(err.message); }
+        });
+      });
+    }
+
+    $("detail-close").addEventListener("click", () => $("detail-dialog").close());
+
+    /* ---------- старт ---------- */
+    loadResume();
+    refreshCount();
+  </script>
+</body>
+</html>

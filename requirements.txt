@@ -1,0 +1,5 @@
+# Зависимости для деплоя (Railway/Railpack). Источник истины — pyproject.toml.
+httpx>=0.27
+fastapi>=0.111
+uvicorn[standard]>=0.30
+pydantic>=2.7

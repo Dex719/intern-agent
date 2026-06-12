@@ -1,0 +1,20 @@
+# данные и секреты — не в репо
+data/
+*.db
+*.env
+.env*
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# ide / os
+.vscode/
+.idea/
+.DS_Store
