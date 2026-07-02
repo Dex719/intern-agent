@@ -198,7 +198,22 @@ SEARCH_ITEM_RE = re.compile(
 )
 
 
-def search_vacancies_api(query: str, area: str) -> list[str]:
+def _filter_params(filters: dict | None, *, html: bool = False) -> dict:
+    """Параметры поиска из фильтров: мин. зарплата и удалёнка (API и HTML-страница)."""
+    params: dict = {}
+    filters = filters or {}
+    min_salary = filters.get("min_salary") or 0
+    if min_salary:
+        params["salary"] = min_salary
+        params["only_with_salary"] = "true"
+    if filters.get("remote_only"):
+        params["schedule"] = "remote"
+        if html:  # у нового веб-поиска hh свой параметр формата работы
+            params["work_format"] = "REMOTE"
+    return params
+
+
+def search_vacancies_api(query: str, area: str, filters: dict | None = None) -> list[str]:
     """GET /vacancies?text=... — id вакансий по запросу (свежие сверху)."""
     try:
         resp = httpx.get(
@@ -208,6 +223,7 @@ def search_vacancies_api(query: str, area: str) -> list[str]:
                 "area": area,
                 "order_by": "publication_time",
                 "per_page": 20,
+                **_filter_params(filters),
             },
             headers={"User-Agent": config.HH_USER_AGENT},
             timeout=config.HH_TIMEOUT,
@@ -220,12 +236,17 @@ def search_vacancies_api(query: str, area: str) -> list[str]:
     return [str(item["id"]) for item in resp.json().get("items", [])]
 
 
-def search_vacancies_html(query: str, area: str) -> list[str]:
+def search_vacancies_html(query: str, area: str, filters: dict | None = None) -> list[str]:
     """Запасной путь: id вакансий со страницы поиска hh.kz."""
     try:
         resp = httpx.get(
             "https://hh.kz/search/vacancy",
-            params={"text": query, "area": area, "order_by": "publication_time"},
+            params={
+                "text": query,
+                "area": area,
+                "order_by": "publication_time",
+                **_filter_params(filters, html=True),
+            },
             headers={"User-Agent": config.HH_BROWSER_UA, "Accept-Language": "ru"},
             timeout=config.HH_TIMEOUT,
             follow_redirects=True,
@@ -241,10 +262,10 @@ def search_vacancies_html(query: str, area: str) -> list[str]:
     return seen
 
 
-def search_vacancies(query: str, area: str | None = None) -> list[str]:
+def search_vacancies(query: str, area: str | None = None, filters: dict | None = None) -> list[str]:
     """Сначала открытое API; если оно закрыто для IP сервера — HTML-страница поиска."""
     area = area or config.DEFAULT_SEARCH_AREA
     try:
-        return search_vacancies_api(query, area)
+        return search_vacancies_api(query, area, filters)
     except HHError:
-        return search_vacancies_html(query, area)
+        return search_vacancies_html(query, area, filters)

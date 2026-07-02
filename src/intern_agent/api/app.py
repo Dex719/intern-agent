@@ -4,12 +4,12 @@ import asyncio
 import secrets
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from intern_agent import config, db, hh, hh_account, llm, services
+from intern_agent import config, db, hh, hh_account, llm, resume_files, services
 
 
 @asynccontextmanager
@@ -62,9 +62,30 @@ def write_resume(body: ResumeIn) -> dict:
     conn = db.get_conn()
     try:
         db.save_resume(conn, body.content.strip())
+        resume = db.get_resume(conn)
     finally:
         conn.close()
-    return {"ok": True}
+    return {"ok": True, **resume}
+
+
+@app.post("/api/resume/upload")
+async def upload_resume(file: UploadFile) -> dict:
+    """Загрузка резюме файлом: PDF / DOCX / MD / TXT → текст → сохраняем."""
+    data = await file.read()
+    try:
+        content = resume_files.extract_text(file.filename or "", data)
+    except resume_files.ResumeFileError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if len(content) < 80:
+        raise HTTPException(400, "Текст в файле слишком короткий для резюме (минимум 80 символов)")
+    conn = db.get_conn()
+    try:
+        db.save_resume(conn, content)
+        db.add_log(conn, "info", "resume", f"резюме загружено из файла {file.filename}")
+        resume = db.get_resume(conn)
+    finally:
+        conn.close()
+    return {"ok": True, **resume}
 
 
 @app.delete("/api/resume")
@@ -151,6 +172,9 @@ class SettingsIn(BaseModel):
     hh_resume_title: str | None = None
     auto_apply_enabled: bool | None = None
     auto_apply_min_score: int | None = Field(default=None, ge=50, le=95)
+    filter_min_salary: int | None = Field(default=None, ge=0, le=10_000_000)
+    filter_remote_only: bool | None = None
+    filter_exclude_companies: str | None = Field(default=None, max_length=500)
 
 
 SECRET_KEYS = {"llm_api_key", "tg_bot_token", "hh_client_secret"}
@@ -169,6 +193,8 @@ def _settings_out(conn) -> dict:
     settings["auto_scan_hours"] = services._safe_int(settings["auto_scan_hours"])
     settings["auto_apply_enabled"] = settings["auto_apply_enabled"] == "1"
     settings["auto_apply_min_score"] = services._safe_int(settings["auto_apply_min_score"]) or 70
+    settings["filter_min_salary"] = services._safe_int(settings["filter_min_salary"])
+    settings["filter_remote_only"] = settings["filter_remote_only"] == "1"
     settings["hh_linked"] = bool(db.get_setting(conn, "hh_access_token"))
     settings["hh_account_name"] = db.get_setting(conn, "hh_account_name")
     return settings
@@ -199,6 +225,7 @@ def write_settings(body: SettingsIn) -> dict:
         for key in (
             "llm_api_key", "llm_model", "tg_bot_token", "tg_chat_id",
             "hh_client_id", "hh_client_secret", "hh_resume_id", "hh_resume_title",
+            "filter_exclude_companies",
         ):
             value = getattr(body, key)
             if value is not None:
@@ -209,6 +236,12 @@ def write_settings(body: SettingsIn) -> dict:
             db.set_setting(conn, "auto_apply_enabled", "1" if body.auto_apply_enabled else "")
         if body.auto_apply_min_score is not None:
             db.set_setting(conn, "auto_apply_min_score", str(body.auto_apply_min_score))
+        if body.filter_min_salary is not None:
+            db.set_setting(
+                conn, "filter_min_salary", str(body.filter_min_salary) if body.filter_min_salary else ""
+            )
+        if body.filter_remote_only is not None:
+            db.set_setting(conn, "filter_remote_only", "1" if body.filter_remote_only else "")
         return {"ok": True, **_settings_out(conn)}
     finally:
         conn.close()

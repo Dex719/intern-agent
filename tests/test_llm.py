@@ -79,3 +79,49 @@ def test_resolve_config_new_providers():
 def test_resolve_config_unknown_provider_falls_back():
     cfg = llm.resolve_config({"llm_provider": "nope", "llm_api_key": "k"})
     assert cfg["provider"] == "gemini"
+
+
+# ---------- скорость и устойчивость Gemini ----------
+
+
+def test_gemini_body_disables_thinking_for_25_flash():
+    body = llm.gemini_body("привет", "gemini-2.5-flash", None, 0.3)
+    assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+    body = llm.gemini_body("привет", "gemini-2.5-flash-lite", llm.RESPONSE_SCHEMA, 0.3)
+    assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+    assert body["generationConfig"]["responseSchema"] == llm.RESPONSE_SCHEMA
+
+
+def test_gemini_body_keeps_thinking_for_other_models():
+    for model in ("gemini-2.0-flash", "gemini-2.5-pro"):
+        body = llm.gemini_body("привет", model, None, 0.3)
+        assert "thinkingConfig" not in body["generationConfig"]
+
+
+@pytest.mark.anyio
+async def test_gemini_fallback_model_used_on_error(monkeypatch):
+    calls = []
+
+    async def fake_post(url, *, headers, params, body):
+        calls.append(url)
+        if "gemini-2.5-flash" in url:
+            raise llm.LLMError("Gemini перегружен")
+        return {"candidates": [{"content": {"parts": [{"text": "{}"}]}}]}
+
+    monkeypatch.setattr(llm, "_post_with_retry", fake_post)
+    monkeypatch.setattr(llm.config, "GEMINI_FALLBACK_MODEL", "gemini-2.0-flash")
+    payload = await llm._call_gemini("привет", "key", "gemini-2.5-flash", None, 0.3)
+    assert "candidates" in payload
+    assert len(calls) == 2
+    assert "gemini-2.0-flash" in calls[1]
+
+
+@pytest.mark.anyio
+async def test_gemini_no_fallback_when_disabled(monkeypatch):
+    async def fake_post(url, *, headers, params, body):
+        raise llm.LLMError("Gemini перегружен")
+
+    monkeypatch.setattr(llm, "_post_with_retry", fake_post)
+    monkeypatch.setattr(llm.config, "GEMINI_FALLBACK_MODEL", "")
+    with pytest.raises(llm.LLMError):
+        await llm._call_gemini("привет", "key", "gemini-2.5-flash", None, 0.3)

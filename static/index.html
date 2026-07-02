@@ -59,7 +59,7 @@
 
       <div class="card reveal" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div class="queries-row" id="queries-row" style="flex:1;min-width:200px"></div>
-        <button id="queries-edit" class="icon-btn" type="button" aria-label="Изменить запросы" title="Изменить запросы" style="width:40px;height:40px">
+        <button id="queries-edit" class="icon-btn" type="button" aria-label="Поиск и фильтры" title="Поиск и фильтры" style="width:40px;height:40px">
           <span data-icon="pencil" data-icon-size="18"></span>
         </button>
         <button id="scan-btn" class="btn btn-filled" type="button">
@@ -166,25 +166,50 @@
       <span data-icon="x" data-icon-size="20"></span>
     </button></div>
     <p class="body-lg" style="font-size:.92rem;margin:10px 0 14px">
-      Вставь текст резюме один раз — агент будет сравнивать с ним каждую вакансию.
+      Вставь текст или загрузи файл — агент будет сравнивать резюме с каждой вакансией.
       Хранится только в базе приложения.
     </p>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <button id="resume-upload-btn" class="btn btn-tonal btn-sm" type="button">
+        <span data-icon="file-text" data-icon-size="17"></span> Загрузить файл
+      </button>
+      <span class="field-hint" style="margin:0">PDF, DOCX, MD или TXT — можно просто перетащить в окно</span>
+      <input id="resume-file" type="file" accept=".pdf,.docx,.md,.txt" style="display:none" />
+    </div>
     <textarea id="resume-text" class="text-area" style="min-height:260px" placeholder="Имя, контакты, о себе, проекты, навыки, образование…"></textarea>
-    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+    <p class="field-hint" id="resume-meta" style="margin-top:8px"></p>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:16px">
+      <button id="resume-delete" class="btn btn-text btn-sm" type="button" style="display:none;color:var(--error)">
+        <span data-icon="trash" data-icon-size="16"></span> Удалить
+      </button>
+      <span style="flex:1"></span>
       <button id="resume-cancel" class="btn btn-text" type="button">Отмена</button>
       <button id="resume-save" class="btn btn-filled" type="button">Сохранить</button>
     </div>
   </dialog>
 
-  <!-- ===== Диалог: поисковые запросы ===== -->
+  <!-- ===== Диалог: поиск и фильтры ===== -->
   <dialog id="queries-dialog" class="m3-dialog">
-    <div class="dialog-head"><h3 class="headline" style="flex:1;margin:0">Поисковые запросы</h3><button class="icon-btn dialog-x" type="button" data-close-dialog="queries-dialog" aria-label="Закрыть">
+    <div class="dialog-head"><h3 class="headline" style="flex:1;margin:0">Поиск и фильтры</h3><button class="icon-btn dialog-x" type="button" data-close-dialog="queries-dialog" aria-label="Закрыть">
       <span data-icon="x" data-icon-size="20"></span>
     </button></div>
     <p class="body-lg" style="font-size:.92rem;margin:10px 0 14px">
       По каким запросам сканировать hh.kz. Один запрос — одна строка, максимум 5.
     </p>
     <textarea id="queries-text" class="text-area" style="min-height:140px" placeholder="python стажер&#10;python intern&#10;junior python разработчик"></textarea>
+
+    <label class="field-label" for="filter-salary">Зарплата от (₸)</label>
+    <input id="filter-salary" class="text-input" type="number" min="0" step="10000" placeholder="например 200000 — пусто = не важно" />
+    <p class="field-hint">Вакансии без указанной зарплаты будут скрыты, если фильтр включён.</p>
+
+    <label class="switch-row" for="filter-remote">
+      <input id="filter-remote" type="checkbox" />
+      Только удалёнка
+    </label>
+
+    <label class="field-label" for="filter-exclude">Исключить компании</label>
+    <input id="filter-exclude" class="text-input" type="text" placeholder="через запятую: Kaspi, EPAM…" />
+
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
       <button id="queries-cancel" class="btn btn-text" type="button">Отмена</button>
       <button id="queries-save" class="btn btn-filled" type="button">Сохранить</button>
@@ -381,53 +406,143 @@
       })
     );
 
-    $("resume-btn").addEventListener("click", () => resumeDialog.showModal());
+    let resumeUpdatedAt = null;
+    function syncResumeMeta() {
+      const len = $("resume-text").value.trim().length;
+      const when = hasResume && resumeUpdatedAt
+        ? ` · обновлено ${new Date(resumeUpdatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}`
+        : "";
+      $("resume-meta").textContent = len ? `${len.toLocaleString("ru-RU")} символов${when}` : "";
+      $("resume-delete").style.display = hasResume ? "" : "none";
+    }
+    $("resume-text").addEventListener("input", syncResumeMeta);
+
+    $("resume-btn").addEventListener("click", () => { syncResumeMeta(); resumeDialog.showModal(); });
     $("resume-cancel").addEventListener("click", () => resumeDialog.close());
     $("resume-save").addEventListener("click", async () => {
       const content = $("resume-text").value.trim();
       if (content.length < 80) { toast("Слишком короткое резюме (минимум 80 символов)"); return; }
       try {
-        await api("/api/resume", { method: "PUT", body: JSON.stringify({ content }) });
+        const data = await api("/api/resume", { method: "PUT", body: JSON.stringify({ content }) });
         hasResume = true;
+        resumeUpdatedAt = data.updated_at || new Date().toISOString();
         resumeDialog.close();
         toast("Резюме сохранено");
       } catch (e) { toast(e.message); }
     });
+    $("resume-delete").addEventListener("click", async () => {
+      if (!confirm("Удалить сохранённое резюме?")) return;
+      try {
+        await api("/api/resume", { method: "DELETE" });
+        hasResume = false;
+        resumeUpdatedAt = null;
+        $("resume-text").value = "";
+        syncResumeMeta();
+        toast("Резюме удалено");
+      } catch (e) { toast(e.message); }
+    });
+
+    /* загрузка файла: кнопка + drag&drop (fetch без JSON-заголовка — multipart) */
+    async function uploadResumeFile(file) {
+      if (!file) return;
+      const btn = $("resume-upload-btn");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner" style="width:15px;height:15px"></span> Читаю файл…`;
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const resp = await fetch("/api/resume/upload", { method: "POST", body: form });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || "Не удалось загрузить файл");
+        hasResume = true;
+        resumeUpdatedAt = data.updated_at;
+        $("resume-text").value = data.content;
+        syncResumeMeta();
+        toast("Резюме загружено — проверь текст и подправь при желании");
+      } catch (e) { toast(e.message); }
+      finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span data-icon="file-text" data-icon-size="17"></span> Загрузить файл`;
+        iaApplyIcons(btn);
+        $("resume-file").value = "";
+      }
+    }
+    $("resume-upload-btn").addEventListener("click", () => $("resume-file").click());
+    $("resume-file").addEventListener("change", () => uploadResumeFile($("resume-file").files[0]));
+    ["dragover", "drop"].forEach((ev) =>
+      resumeDialog.addEventListener(ev, (e) => {
+        e.preventDefault();
+        resumeDialog.classList.toggle("drag-over", ev === "dragover");
+        if (ev === "drop") uploadResumeFile(e.dataTransfer?.files?.[0]);
+      }));
+    resumeDialog.addEventListener("dragleave", () => resumeDialog.classList.remove("drag-over"));
 
     async function loadResume() {
       try {
         const data = await api("/api/resume");
         hasResume = data.has_resume;
+        resumeUpdatedAt = data.updated_at || null;
         if (data.content) $("resume-text").value = data.content;
+        syncResumeMeta();
         if (!hasResume) setTimeout(() => resumeDialog.showModal(), 900);
       } catch { /* офлайн — не страшно */ }
     }
 
-    /* ---------- поисковые запросы ---------- */
+    /* ---------- поисковые запросы и фильтры ---------- */
     let queries = [];
+    let filters = { min_salary: 0, remote_only: false, exclude: "" };
+    function filterChips() {
+      const chips = [];
+      if (filters.min_salary) chips.push(`от ${Number(filters.min_salary).toLocaleString("ru-RU")} ₸`);
+      if (filters.remote_only) chips.push("удалёнка");
+      if (filters.exclude) chips.push(`без: ${filters.exclude}`);
+      return chips;
+    }
     function renderQueries() {
-      $("queries-row").innerHTML = queries.map((q) =>
-        `<span class="query-chip">${esc(q)}</span>`).join("");
+      $("queries-row").innerHTML =
+        queries.map((q) => `<span class="query-chip">${esc(q)}</span>`).join("") +
+        filterChips().map((c) => `<span class="query-chip filter">${esc(c)}</span>`).join("");
+    }
+    function readFilters(settings) {
+      filters = {
+        min_salary: settings.filter_min_salary || 0,
+        remote_only: !!settings.filter_remote_only,
+        exclude: settings.filter_exclude_companies || "",
+      };
     }
     async function loadQueries() {
-      try { queries = (await api("/api/settings")).queries; renderQueries(); }
-      catch { /* ignore */ }
+      try {
+        const settings = await api("/api/settings");
+        queries = settings.queries;
+        readFilters(settings);
+        renderQueries();
+      } catch { /* ignore */ }
     }
     const queriesDialog = $("queries-dialog");
     $("queries-edit").addEventListener("click", () => {
       $("queries-text").value = queries.join("\n");
+      $("filter-salary").value = filters.min_salary || "";
+      $("filter-remote").checked = filters.remote_only;
+      $("filter-exclude").value = filters.exclude;
       queriesDialog.showModal();
     });
     $("queries-cancel").addEventListener("click", () => queriesDialog.close());
     $("queries-save").addEventListener("click", async () => {
       const list = $("queries-text").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 5);
       if (!list.length) { toast("Нужен хотя бы один запрос"); return; }
+      const payload = {
+        queries: list,
+        filter_min_salary: Math.max(0, Number($("filter-salary").value) || 0),
+        filter_remote_only: $("filter-remote").checked,
+        filter_exclude_companies: $("filter-exclude").value.trim(),
+      };
       try {
-        const data = await api("/api/settings", { method: "PUT", body: JSON.stringify({ queries: list }) });
+        const data = await api("/api/settings", { method: "PUT", body: JSON.stringify(payload) });
         queries = data.queries;
+        readFilters(data);
         renderQueries();
         queriesDialog.close();
-        toast("Запросы сохранены");
+        toast("Поиск и фильтры сохранены");
       } catch (e) { toast(e.message); }
     });
 
@@ -445,7 +560,7 @@
       $("scan-btn").disabled = on;
       $("scan-text").textContent = on ? "Сканирую…" : "Сканировать hh";
       clearInterval(scanTimer);
-      if (on) progressStart("scan-bar", "scan-pct", 35000);
+      if (on) progressStart("scan-bar", "scan-pct", 22000);
       else progressFinish("scan-bar", "scan-pct");
       if (on) {
         let i = 0;
@@ -576,7 +691,7 @@
       $("btn").disabled = on;
       $("manual-btn").disabled = on;
       clearInterval(phraseTimer);
-      if (on) progressStart("loading-bar", "loading-pct", 22000);
+      if (on) progressStart("loading-bar", "loading-pct", 12000);
       else progressFinish("loading-bar", "loading-pct");
       if (on) {
         let i = 0;

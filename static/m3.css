@@ -744,3 +744,13 @@ footer.colophon {
   cursor: pointer; user-select: none;
 }
 .switch-row input { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; }
+
+/* --- фильтры поиска: чипы-«условия» рядом с запросами --- */
+.query-chip.filter {
+  background: transparent;
+  border: 1.5px dashed var(--outline-variant);
+  color: var(--on-surface-variant);
+}
+
+/* --- drag&drop файла резюме --- */
+dialog.m3-dialog.drag-over { outline: 2px dashed var(--primary); outline-offset: -8px; }

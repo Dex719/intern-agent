@@ -15,6 +15,8 @@ STATIC_DIR = Path(os.getenv("STATIC_DIR", BASE_DIR / "static"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_TIMEOUT = float(os.getenv("GEMINI_TIMEOUT", "120"))
+# Запасная модель: если основная перегружена (503) после всех ретраев. Пусто = выключено.
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash")
 
 # hh.kz / hh.ru — официальное открытое API.
 HH_API_BASE = "https://api.hh.ru"
