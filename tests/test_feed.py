@@ -70,7 +70,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
 
     monkeypatch.setattr(
-        "intern_agent.api.app.hh.search_vacancies", lambda query, area=None: ["111", "222"]
+        "intern_agent.api.app.hh.search_vacancies", lambda query, area=None, filters=None: ["111", "222"]
     )
     monkeypatch.setattr(
         "intern_agent.api.app.hh.fetch_vacancy",

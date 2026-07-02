@@ -7,7 +7,7 @@
 **AI agent that finds internships on hh.kz and prepares your applications for you**
 
 [![CI](https://github.com/Dex719/intern-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/intern-agent/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-56_passed-2ea44f)
+![tests](https://img.shields.io/badge/tests-76_passed-2ea44f)
 ![python](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 
@@ -32,6 +32,8 @@ The agent scans fresh vacancies on **hh.kz** by your search queries, scores each
 | 🤖 **Telegram bot** | cover letters for good matches land right in your chat — copy and send |
 | 🔗 **hh account linking (OAuth)** | connect your hh.ru/hh.kz account and the agent applies for you with a tailored cover letter |
 | ✍️ **Semi-auto mode** | no hh dev app? The agent still writes a cover letter for every good match and sends it to Telegram with the vacancy link |
+| 📎 **Resume file upload** | drop in a PDF, DOCX, MD or TXT — the agent extracts the text; view, edit or delete it anytime |
+| 🔍 **Search filters** | minimum salary, remote-only, excluded companies — applied to every scan |
 | 🎯 **Match score 0–100** | an honest verdict: is it worth applying, what you already cover and what is missing |
 | 📝 **Resume tailored to the vacancy** | your facts, reordered and rephrased for the role |
 | 💌 **Cover letters** | in Russian and English, ready to send |
@@ -81,9 +83,10 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/health` | health check |
-| `GET` / `PUT` | `/api/resume` | get / save resume |
+| `GET` / `PUT` / `DELETE` | `/api/resume` | get / save / delete resume |
+| `POST` | `/api/resume/upload` | upload resume as a file (PDF / DOCX / MD / TXT) |
 | `POST` | `/api/analyze` | `{url}` or `{text}` → full analysis, saved to tracker |
-| `GET` / `PUT` | `/api/settings` | search queries & settings |
+| `GET` / `PUT` | `/api/settings` | search queries, filters & settings |
 | `POST` | `/api/scan` | scan hh by saved queries, score new vacancies into the feed |
 | `GET` / `PATCH` | `/api/feed` | feed items / ignore item |
 | `GET` | `/api/logs` | recent app events (scan, LLM) |
@@ -96,13 +99,15 @@ PYTHONPATH=src python -m uvicorn intern_agent.api.app:app --reload
 
 ```bash
 ruff check src tests
-PYTHONPATH=src pytest -q   # 56 tests
+PYTHONPATH=src pytest -q   # 76 tests
 ```
 
 ## Roadmap
 
 - [x] Scheduled auto-scan → Telegram notifications
 - [x] Semi-auto mode: cover letters to Telegram without an hh app
+- [x] Resume upload from a file (PDF / DOCX / MD / TXT)
+- [x] Search filters: minimum salary, remote-only, excluded companies
 - [ ] Response/conversion analytics in the tracker
 - [ ] PDF export of the tailored resume
 

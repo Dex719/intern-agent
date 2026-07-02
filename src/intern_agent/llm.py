@@ -178,23 +178,48 @@ async def _post_with_retry(url: str, *, headers: dict, params: dict, body: dict)
     raise LLMError(f"ИИ-провайдер недоступен после {MAX_ATTEMPTS} попыток ({last_error})")
 
 
+def gemini_body(prompt: str, model: str, schema: dict | None, temperature: float) -> dict:
+    """Тело запроса generateContent. Для 2.5-flash отключаем thinking — ответ в разы быстрее."""
+    generation_config = {
+        "temperature": temperature,
+        "responseMimeType": "application/json",
+        **({"responseSchema": schema} if schema else {}),
+    }
+    if model.startswith("gemini-2.5-flash"):
+        generation_config["thinkingConfig"] = {"thinkingBudget": 0}
+    return {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": generation_config}
+
+
+async def _call_gemini(
+    prompt: str, api_key: str, model: str, schema: dict | None, temperature: float
+) -> dict:
+    """Вызов Gemini; если модель перегружена — пробуем запасную (GEMINI_FALLBACK_MODEL)."""
+    try:
+        return await _post_with_retry(
+            GEMINI_URL.format(model=model),
+            headers={},
+            params={"key": api_key},
+            body=gemini_body(prompt, model, schema, temperature),
+        )
+    except LLMError:
+        fallback = config.GEMINI_FALLBACK_MODEL
+        if not fallback or fallback == model:
+            raise
+        return await _post_with_retry(
+            GEMINI_URL.format(model=fallback),
+            headers={},
+            params={"key": api_key},
+            body=gemini_body(prompt, fallback, schema, temperature),
+        )
+
+
 async def _call_json(prompt: str, cfg: dict, *, schema: dict | None, temperature: float):
     """Вызов LLM, возвращает распарсенный JSON (dict или list)."""
     provider, api_key, model = cfg["provider"], cfg["api_key"], cfg["model"]
     if not api_key:
         raise LLMError("API-ключ не задан — добавь его в настройках (шестерёнка)")
     if provider == "gemini":
-        body = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": temperature,
-                "responseMimeType": "application/json",
-                **({"responseSchema": schema} if schema else {}),
-            },
-        }
-        payload = await _post_with_retry(
-            GEMINI_URL.format(model=model), headers={}, params={"key": api_key}, body=body
-        )
+        payload = await _call_gemini(prompt, api_key, model, schema, temperature)
         return _json_from_text(_extract_text_gemini(payload))
     if provider == "anthropic":
         body = {

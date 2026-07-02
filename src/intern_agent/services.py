@@ -21,6 +21,9 @@ SETTING_KEYS = (
     "hh_resume_title",
     "auto_apply_enabled",
     "auto_apply_min_score",
+    "filter_min_salary",
+    "filter_remote_only",
+    "filter_exclude_companies",
 )
 NOTIFY_MIN_SCORE = 60
 AUTO_APPLY_MAX_PER_RUN = 5
@@ -36,6 +39,25 @@ class ScanError(Exception):
     """Скан не удался целиком."""
 
 
+def search_filters(settings: dict) -> dict:
+    """Фильтры поиска из настроек: мин. зарплата и удалёнка."""
+    return {
+        "min_salary": _safe_int(settings.get("filter_min_salary")),
+        "remote_only": settings.get("filter_remote_only") == "1",
+    }
+
+
+def excluded_companies(settings: dict) -> list[str]:
+    """Список исключённых компаний (через запятую, без регистра)."""
+    raw = settings.get("filter_exclude_companies") or ""
+    return [name.strip().lower() for name in raw.split(",") if name.strip()]
+
+
+def is_company_excluded(company: str | None, excluded: list[str]) -> bool:
+    name = (company or "").lower()
+    return bool(name) and any(bad in name for bad in excluded)
+
+
 async def run_scan(conn: sqlite3.Connection) -> dict:
     """Ищет новые вакансии по сохранённым запросам, оценивает, кладёт в ленту."""
     resume = db.get_resume(conn)
@@ -43,13 +65,15 @@ async def run_scan(conn: sqlite3.Connection) -> dict:
         raise ScanError("Сначала сохрани резюме (кнопка «Моё резюме»)")
     settings = get_all_settings(conn)
     queries = settings["queries"]
+    filters = search_filters(settings)
+    excluded = excluded_companies(settings)
     known = db.feed_known_ids(conn)
 
     candidate_ids: list[str] = []
     errors: list[str] = []
     for query in queries:
         try:
-            for vacancy_id in hh.search_vacancies(query):
+            for vacancy_id in hh.search_vacancies(query, filters=filters):
                 if vacancy_id not in known and vacancy_id not in candidate_ids:
                     candidate_ids.append(vacancy_id)
         except hh.HHError as exc:
@@ -61,11 +85,15 @@ async def run_scan(conn: sqlite3.Connection) -> dict:
         return {"added": 0, "items": [], "errors": errors}
 
     vacancies: list[dict] = []
+    skipped = 0
     for vacancy_id in candidate_ids:
         try:
             data = hh.fetch_vacancy(vacancy_id)
         except hh.HHError as exc:
             errors.append(f"вакансия {vacancy_id}: {exc}")
+            continue
+        if is_company_excluded((data.get("employer") or {}).get("name"), excluded):
+            skipped += 1
             continue
         vacancies.append(
             {
@@ -76,6 +104,8 @@ async def run_scan(conn: sqlite3.Connection) -> dict:
             }
         )
     if not vacancies:
+        if skipped:  # всё новое отсеяли фильтры — это не ошибка
+            return {"added": 0, "items": db.list_feed(conn, "new"), "errors": errors}
         raise ScanError("Не удалось загрузить ни одной вакансии с hh")
 
     try:
