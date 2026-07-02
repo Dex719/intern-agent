@@ -103,3 +103,20 @@ def test_settings_filters_roundtrip(client):
 def test_settings_filters_validation(client):
     assert client.put("/api/settings", json={"filter_min_salary": -5}).status_code == 422
     assert client.put("/api/settings", json={"filter_exclude_companies": "x" * 501}).status_code == 422
+
+
+def test_settings_exclude_logos_roundtrip(client):
+    logos = '{"Kaspi.kz": "https://img.hhcdn.ru/employer-logo/1.png"}'
+    resp = client.put("/api/settings", json={"filter_exclude_logos": logos})
+    assert resp.status_code == 200
+    assert client.get("/api/settings").json()["filter_exclude_logos"] == logos
+    # сброс
+    assert client.put("/api/settings", json={"filter_exclude_logos": ""}).status_code == 200
+    assert client.get("/api/settings").json()["filter_exclude_logos"] == ""
+
+
+def test_settings_exclude_logos_validation(client):
+    assert client.put("/api/settings", json={"filter_exclude_logos": "not json"}).status_code == 422
+    assert client.put("/api/settings", json={"filter_exclude_logos": "[1,2]"}).status_code == 422
+    assert client.put("/api/settings", json={"filter_exclude_logos": '{"a": 1}'}).status_code == 422
+    assert client.put("/api/settings", json={"filter_exclude_logos": "x" * 4001}).status_code == 422

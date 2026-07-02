@@ -754,3 +754,60 @@ footer.colophon {
 
 /* --- drag&drop файла резюме --- */
 dialog.m3-dialog.drag-over { outline: 2px dashed var(--primary); outline-offset: -8px; }
+
+/* --- исключённые компании: чипы с логотипами --- */
+.exclude-chips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 8px 0 10px;
+  min-height: 24px;
+}
+.company-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  font-size: .85rem; font-weight: 600;
+}
+.company-logo {
+  border-radius: 5px;
+  object-fit: contain;
+  background: #fff;
+  flex: none;
+}
+.chip-x {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--on-surface-variant);
+  font-size: 1rem; line-height: 1;
+  padding: 2px 4px; border-radius: 50%;
+}
+.chip-x:hover { color: var(--error, #b3261e); background: var(--surface-container-highest); }
+.exclude-box { position: relative; }
+.exclude-suggest {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+  z-index: 30;
+  display: flex; flex-direction: column;
+  background: var(--surface-container-highest);
+  border: 1.5px solid var(--outline-variant);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+}
+.suggest-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--on-surface);
+  font-size: .88rem; font-weight: 500; text-align: left;
+}
+.suggest-item:hover { background: var(--surface-container-high); }
+.exclude-popular { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.popular-chip {
+  border: 1.5px dashed var(--outline-variant);
+  background: transparent; cursor: pointer;
+  color: var(--on-surface-variant);
+  padding: 5px 12px; border-radius: 999px;
+  font-size: .82rem; font-weight: 600;
+}
+.popular-chip:hover { border-color: var(--primary); color: var(--primary); }
+.query-chip.filter .company-logo { border-radius: 4px; }

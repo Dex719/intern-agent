@@ -1,13 +1,14 @@
 """FastAPI: лента вакансий + анализ + трекер откликов + статика."""
 
 import asyncio
+import json
 import secrets
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from intern_agent import config, db, hh, hh_account, llm, resume_files, services
 
@@ -175,6 +176,23 @@ class SettingsIn(BaseModel):
     filter_min_salary: int | None = Field(default=None, ge=0, le=10_000_000)
     filter_remote_only: bool | None = None
     filter_exclude_companies: str | None = Field(default=None, max_length=500)
+    filter_exclude_logos: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("filter_exclude_logos")
+    @classmethod
+    def _logos_json(cls, value: str | None) -> str | None:
+        """Метаданные логотипов: JSON-объект {название: url} или пустая строка."""
+        if not value:
+            return value
+        try:
+            parsed = json.loads(value)
+        except ValueError as exc:
+            raise ValueError("filter_exclude_logos должен быть валидным JSON") from exc
+        if not isinstance(parsed, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in parsed.items()
+        ):
+            raise ValueError("filter_exclude_logos должен быть объектом {название: url}")
+        return value
 
 
 SECRET_KEYS = {"llm_api_key", "tg_bot_token", "hh_client_secret"}
@@ -225,7 +243,7 @@ def write_settings(body: SettingsIn) -> dict:
         for key in (
             "llm_api_key", "llm_model", "tg_bot_token", "tg_chat_id",
             "hh_client_id", "hh_client_secret", "hh_resume_id", "hh_resume_title",
-            "filter_exclude_companies",
+            "filter_exclude_companies", "filter_exclude_logos",
         ):
             value = getattr(body, key)
             if value is not None:
