@@ -208,7 +208,13 @@
     </label>
 
     <label class="field-label" for="filter-exclude">Исключить компании</label>
-    <input id="filter-exclude" class="text-input" type="text" placeholder="через запятую: Kaspi, EPAM…" />
+    <div id="exclude-chips" class="exclude-chips"></div>
+    <div class="exclude-box">
+      <input id="filter-exclude" class="text-input" type="text" placeholder="начни вводить название…" autocomplete="off" />
+      <div id="exclude-suggest" class="exclude-suggest" hidden></div>
+    </div>
+    <div id="exclude-popular" class="exclude-popular"></div>
+    <p class="field-hint">Вакансии этих компаний не попадут в ленту. Логотипы подтягиваются из hh.</p>
 
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
       <button id="queries-cancel" class="btn btn-text" type="button">Отмена</button>
@@ -490,26 +496,122 @@
 
     /* ---------- поисковые запросы и фильтры ---------- */
     let queries = [];
-    let filters = { min_salary: 0, remote_only: false, exclude: "" };
-    function filterChips() {
-      const chips = [];
-      if (filters.min_salary) chips.push(`от ${Number(filters.min_salary).toLocaleString("ru-RU")} ₸`);
-      if (filters.remote_only) chips.push("удалёнка");
-      if (filters.exclude) chips.push(`без: ${filters.exclude}`);
-      return chips;
+    let filters = { min_salary: 0, remote_only: false, exclude: [] };
+    function logoImg(logo, size) {
+      return logo ? `<img class="company-logo" src="${esc(logo)}" width="${size}" height="${size}" alt="" loading="lazy" onerror="this.remove()" />` : "";
     }
     function renderQueries() {
+      const chips = [];
+      if (filters.min_salary) chips.push(`<span class="query-chip filter">от ${Number(filters.min_salary).toLocaleString("ru-RU")} ₸</span>`);
+      if (filters.remote_only) chips.push(`<span class="query-chip filter">удалёнка</span>`);
+      for (const c of filters.exclude) {
+        chips.push(`<span class="query-chip filter">без ${logoImg(c.logo, 16)}${esc(c.name)}</span>`);
+      }
       $("queries-row").innerHTML =
-        queries.map((q) => `<span class="query-chip">${esc(q)}</span>`).join("") +
-        filterChips().map((c) => `<span class="query-chip filter">${esc(c)}</span>`).join("");
+        queries.map((q) => `<span class="query-chip">${esc(q)}</span>`).join("") + chips.join("");
     }
     function readFilters(settings) {
+      let logos = {};
+      try { logos = JSON.parse(settings.filter_exclude_logos || "{}"); } catch { /* ignore */ }
+      const names = (settings.filter_exclude_companies || "").split(",").map((s) => s.trim()).filter(Boolean);
       filters = {
         min_salary: settings.filter_min_salary || 0,
         remote_only: !!settings.filter_remote_only,
-        exclude: settings.filter_exclude_companies || "",
+        exclude: names.map((name) => ({ name, logo: logos[name] || "" })),
       };
     }
+
+    /* --- чипы исключённых компаний с логотипами --- */
+    const POPULAR_COMPANIES = ["Kaspi.kz", "Freedom", "Kolesa Group", "EPAM Systems", "Halyk Bank"];
+    let excludeDraft = [];
+    function renderExcludeChips() {
+      $("exclude-chips").innerHTML = excludeDraft.map((c, i) =>
+        `<span class="company-chip">${logoImg(c.logo, 18)}${esc(c.name)}` +
+        `<button type="button" class="chip-x" data-i="${i}" aria-label="Убрать ${esc(c.name)}">×</button></span>`
+      ).join("") || `<span class="field-hint" style="margin:0">пока никто не исключён</span>`;
+      $("exclude-popular").innerHTML = POPULAR_COMPANIES
+        .filter((name) => !excludeDraft.some((c) => c.name.toLowerCase() === name.toLowerCase()))
+        .map((name) => `<button type="button" class="popular-chip" data-name="${esc(name)}">+ ${esc(name)}</button>`)
+        .join("");
+    }
+    function addExclude(name, logo) {
+      name = (name || "").trim();
+      if (!name || excludeDraft.some((c) => c.name.toLowerCase() === name.toLowerCase())) return;
+      excludeDraft.push({ name, logo: logo || "" });
+      renderExcludeChips();
+      hideSuggest();
+      $("filter-exclude").value = "";
+      $("filter-exclude").focus();
+    }
+    $("exclude-chips").addEventListener("click", (e) => {
+      const btn = e.target.closest(".chip-x");
+      if (!btn) return;
+      excludeDraft.splice(Number(btn.dataset.i), 1);
+      renderExcludeChips();
+    });
+    $("exclude-popular").addEventListener("click", async (e) => {
+      const btn = e.target.closest(".popular-chip");
+      if (!btn) return;
+      const name = btn.dataset.name;
+      addExclude(name, "");
+      const found = await searchEmployers(name);
+      const hit = found.find((f) => f.name.toLowerCase().includes(name.toLowerCase())) || found[0];
+      if (hit && hit.logo) {
+        const chip = excludeDraft.find((c) => c.name === name);
+        if (chip) { chip.logo = hit.logo; renderExcludeChips(); }
+      }
+    });
+    async function searchEmployers(q) {
+      try {
+        const resp = await fetch(
+          `https://api.hh.ru/employers?text=${encodeURIComponent(q)}&only_with_vacancies=true&per_page=6&locale=RU`,
+          { signal: AbortSignal.timeout(4000) }
+        );
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return (data.items || []).map((it) => ({
+          name: it.name,
+          logo: (it.logo_urls && (it.logo_urls["90"] || it.logo_urls.original)) || "",
+        }));
+      } catch { return []; }
+    }
+    function hideSuggest() { $("exclude-suggest").hidden = true; $("exclude-suggest").innerHTML = ""; }
+    let suggestTimer;
+    $("filter-exclude").addEventListener("input", () => {
+      clearTimeout(suggestTimer);
+      const q = $("filter-exclude").value.trim();
+      if (q.length < 2) { hideSuggest(); return; }
+      suggestTimer = setTimeout(async () => {
+        const items = await searchEmployers(q);
+        if (q !== $("filter-exclude").value.trim()) return;
+        const box = $("exclude-suggest");
+        if (!items.length) { hideSuggest(); return; }
+        box.innerHTML = items.map((it, i) =>
+          `<button type="button" class="suggest-item" data-i="${i}">${logoImg(it.logo, 24)}<span>${esc(it.name)}</span></button>`
+        ).join("");
+        box.dataset.items = JSON.stringify(items);
+        box.hidden = false;
+      }, 300);
+    });
+    $("exclude-suggest").addEventListener("click", (e) => {
+      const btn = e.target.closest(".suggest-item");
+      if (!btn) return;
+      const items = JSON.parse($("exclude-suggest").dataset.items || "[]");
+      const it = items[Number(btn.dataset.i)];
+      if (it) addExclude(it.name, it.logo);
+    });
+    $("filter-exclude").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === ",") {
+        e.preventDefault();
+        $("filter-exclude").value.split(",").forEach((part) => addExclude(part, ""));
+      } else if (e.key === "Backspace" && !$("filter-exclude").value && excludeDraft.length) {
+        excludeDraft.pop();
+        renderExcludeChips();
+      } else if (e.key === "Escape" && !$("exclude-suggest").hidden) {
+        e.preventDefault();
+        hideSuggest();
+      }
+    });
     async function loadQueries() {
       try {
         const settings = await api("/api/settings");
@@ -523,18 +625,25 @@
       $("queries-text").value = queries.join("\n");
       $("filter-salary").value = filters.min_salary || "";
       $("filter-remote").checked = filters.remote_only;
-      $("filter-exclude").value = filters.exclude;
+      $("filter-exclude").value = "";
+      excludeDraft = filters.exclude.map((c) => ({ ...c }));
+      renderExcludeChips();
+      hideSuggest();
       queriesDialog.showModal();
     });
     $("queries-cancel").addEventListener("click", () => queriesDialog.close());
     $("queries-save").addEventListener("click", async () => {
       const list = $("queries-text").value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 5);
       if (!list.length) { toast("Нужен хотя бы один запрос"); return; }
+      $("filter-exclude").value.split(",").forEach((part) => addExclude(part, ""));
+      const logos = {};
+      for (const c of excludeDraft) if (c.logo) logos[c.name] = c.logo;
       const payload = {
         queries: list,
         filter_min_salary: Math.max(0, Number($("filter-salary").value) || 0),
         filter_remote_only: $("filter-remote").checked,
-        filter_exclude_companies: $("filter-exclude").value.trim(),
+        filter_exclude_companies: excludeDraft.map((c) => c.name).join(", "),
+        filter_exclude_logos: JSON.stringify(logos),
       };
       try {
         const data = await api("/api/settings", { method: "PUT", body: JSON.stringify(payload) });

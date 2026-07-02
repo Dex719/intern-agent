@@ -24,6 +24,7 @@ SETTING_KEYS = (
     "filter_min_salary",
     "filter_remote_only",
     "filter_exclude_companies",
+    "filter_exclude_logos",
 )
 NOTIFY_MIN_SCORE = 60
 AUTO_APPLY_MAX_PER_RUN = 5
